@@ -68,11 +68,3 @@ Translates natural language queries into SQL, executes them against a SQLite dat
 
 ### Orchestrator
 Routes tasks to the right agent based on task type using a ReAct-style loop. Maintains shared memory across agent calls.
-
-## Auto-Commit Engine
-
-`scripts/auto_commit.py` runs on a schedule and commits meaningful, rotating content to keep your GitHub contribution chart active. It logs pipeline runs, rotates through data snapshots, and updates progress notes — all real artifacts, not junk.
-
----
-
-Built by [Jeremy Tran](https://github.com/jt0321) · System Engineer / AI Developer
