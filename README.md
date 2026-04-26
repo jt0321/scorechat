@@ -19,8 +19,6 @@ ai-automation-portfolio/
 │   ├── file_tool.py
 │   └── web_tool.py
 ├── data/             # Sample data and vector store
-├── scripts/          # Utility scripts
-│   └── auto_commit.py        # GitHub contribution automation
 └── logs/             # Run logs
 ```
 
@@ -30,7 +28,6 @@ ai-automation-portfolio/
 - **RAG Pipeline** — Retrieval-Augmented Generation over local documents using FAISS
 - **SQL Agent** — Natural language to SQL query execution
 - **Structured Extraction** — LLM-powered extraction from unstructured text into Pydantic models
-- **Auto-Commit Engine** — Keeps GitHub contribution graph active with meaningful automated commits
 
 ## Stack
 
@@ -54,8 +51,6 @@ cp .env.example .env
 # Run the orchestrator demo
 python agents/orchestrator.py
 
-# Start the auto-commit scheduler
-python scripts/auto_commit.py
 ```
 
 ## Agents
