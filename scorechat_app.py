@@ -11,6 +11,8 @@ Usage:
 from pathlib import Path
 from dotenv import load_dotenv
 import os
+import csv
+from collections import defaultdict
 
 import streamlit as st
 from langchain_openai import ChatOpenAI, OpenAIEmbeddings
@@ -20,6 +22,19 @@ from langchain.chains import RetrievalQA
 load_dotenv()
 
 INDEX_DIR = Path("faiss_index")
+FRSM_CSV = Path("data/frsm_scores.csv")
+
+
+@st.cache_data(show_spinner=False)
+def load_frsm_scores() -> dict[str, list[dict]]:
+    """Load FRSM score list from CSV; return dict keyed by composer."""
+    if not FRSM_CSV.exists():
+        return {}
+    scores: dict[str, list[dict]] = defaultdict(list)
+    with open(FRSM_CSV, newline="", encoding="utf-8") as f:
+        for row in csv.DictReader(f):
+            scores[row["composer"]].append(row)
+    return dict(scores)
 
 
 @st.cache_resource(show_spinner="Loading index...")
@@ -48,6 +63,28 @@ def main():
     st.set_page_config(page_title="ScoreChat", page_icon="\U0001f3bc", layout="wide")
     st.title("\U0001f3bc ScoreChat")
     st.caption("Classical Score RAG \u2014 ask questions grounded in your uploaded scores.")
+
+    # --- Sidebar: FRSM score list ---
+    with st.sidebar:
+        st.header("FRSM Repertoire")
+        frsm = load_frsm_scores()
+        if frsm:
+            for composer in sorted(frsm.keys()):
+                with st.expander(composer):
+                    for row in frsm[composer]:
+                        label = row["work"]
+                        if row.get("nickname"):
+                            label += f" “{row['nickname']}”"
+                        if row.get("opus"):
+                            label += f", Op. {row['opus'].lstrip('Op. ')}"
+                        elif row.get("catalog"):
+                            label += f", {row['catalog']}"
+                        if row.get("imslp_url"):
+                            st.markdown(f"- [{label}]({row['imslp_url']})")
+                        else:
+                            st.markdown(f"- {label}")
+        else:
+            st.caption("No FRSM CSV found. Run `python download_scores.py --csv data/frsm_scores.csv`.")
 
     if not INDEX_DIR.exists():
         st.warning(
