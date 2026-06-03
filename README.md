@@ -16,13 +16,16 @@ pip install -r requirements.txt
 cp .env.example .env
 # edit .env → OPENAI_API_KEY=your-key
 
-# 3. Download sample scores (Moonlight Sonata, Chopin etudes, etc.)
+# 3. Download sample scores
 python download_scores.py
 
-# 4. Index to FAISS
+# 4. (Optional) Fetch and match scores from a CSV list
+python download_scores.py --csv data/frsm_scores.csv
+
+# 5. Index to FAISS
 python index_scores.py
 
-# 5. Launch chat
+# 6. Launch chat
 streamlit run scorechat_app.py
 ```
 
@@ -32,9 +35,12 @@ streamlit run scorechat_app.py
 
 ```
 scorechat/
-├── download_scores.py     # Fetches public-domain PDFs from IMSLP
+├── download_scores.py     # Fetches public-domain PDFs from IMSLP; supports CSV-driven lookup
 ├── index_scores.py        # PDF/txt → chunked embeddings → FAISS index
-├── scorechat_app.py       # Streamlit chat UI with source expander
+├── scorechat_app.py       # Streamlit chat UI with FRSM sidebar and source expander
+├── data/
+│   ├── frsm_scores.csv    # Curated score list with IMSLP URLs
+│   └── ...                # Drop additional PDFs/txt here
 ├── chains/
 │   ├── rag_chain.py       # LCEL retrieval-augmented generation chain
 │   ├── summarization_chain.py
@@ -43,7 +49,6 @@ scorechat/
 │   ├── orchestrator.py    # Multi-agent coordinator
 │   ├── research_agent.py  # ReAct agent with web/wiki tools
 │   └── data_agent.py      # NL → SQL agent
-├── data/                  # Drop PDFs/txt here
 └── faiss_index/           # Auto-generated, gitignored
 ```
 
@@ -64,21 +69,30 @@ scorechat/
 
 ## Example Queries
 
-- *"What is the key signature of Moonlight Sonata?"*
-- *"Describe the form of Chopin Op.10 No.3."*
-- *"What tempo markings appear in this etude?"*
-- *"Summarize the structure of the first movement."*
+- *"What is the time signature of the opening of the Waldstein Sonata?"*
+- *"How does Schumann use the left hand in Kreisleriana?"*
+- *"What key does the Appassionata's development section reach?"*
+- *"Describe the form of Liszt's Sonata in B minor."*
 
 ---
 
-## Data Sources
+## Score List
 
-All scores sourced from [IMSLP](https://imslp.org) — public domain only. `download_scores.py` includes:
+All scores sourced from [IMSLP](https://imslp.org) — public domain only. `data/frsm_scores.csv` includes 41 works across 10 composers. A few examples:
 
-- Beethoven — Piano Sonata No.14, Op.27 No.2 (*Moonlight*)
-- Beethoven — Piano Sonata No.1, Op.2 No.1
-- Chopin — Étude Op.10 No.3 (*Tristesse*)
-- Chopin — Nocturne Op.9 No.2
+- Beethoven — Piano Sonata No. 23 in F minor, Op. 57 (*Appassionata*)
+- Chopin — Ballade No. 4 in F minor, Op. 52
+- Liszt — Piano Sonata in B minor, S.178
+- Schumann — Kreisleriana, Op. 16
+
+The sidebar in the Streamlit app lists all works with direct IMSLP links.
+
+To download and match scores from the CSV:
+
+```bash
+python download_scores.py --csv data/frsm_scores.csv
+# add --download to also fetch PDFs for matched rows
+```
 
 Add your own PDFs to `data/` and re-run `python index_scores.py` to refresh the index.
 
@@ -89,3 +103,4 @@ Add your own PDFs to `data/` and re-run `python index_scores.py` to refresh the 
 - `faiss_index/` and `.env` are gitignored — never commit API keys or generated indexes.
 - Re-index any time you add new scores: `python index_scores.py` overwrites the previous index.
 - Typed/engraved PDFs extract well; hand-written or image-only scans will yield little text.
+- IMSLP rate-limits batch requests. The downloader sleeps 1.2 s between API calls automatically.
