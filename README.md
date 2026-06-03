@@ -9,8 +9,10 @@ Built with LangChain, FAISS, PyMuPDF, and Streamlit.
 ## Quickstart
 
 ```bash
-# 1. Install
-pip install -r requirements.txt
+# 1. Setup virtual environment and install dependencies
+uv venv
+source .venv/bin/activate
+uv pip install -r requirements.txt
 
 # 2. Add API key
 cp .env.example .env
