@@ -1,16 +1,29 @@
-langchain>=0.2.0
-langchain-openai>=0.1.0
-langchain-community>=0.2.0
-langchain-core>=0.2.0
+# Score analysis
+music21>=9.1.0
+
+# OMR engines (install whichever you use)
+# oemer>=0.1.7          # pip install oemer
+# verovio>=3.15.0       # pip install verovio  (also needed for MEI export)
+
+# Embeddings + LLM
 openai>=1.30.0
-faiss-cpu>=1.8.0
-pydantic>=2.0.0
-python-dotenv>=1.0.0
-pandas>=2.0.0
+
+# Vector store
+pgvector>=0.3.0
+psycopg2-binary>=2.9.9
 sqlalchemy>=2.0.0
-apscheduler>=3.10.0
-requests>=2.31.0
-tiktoken>=0.7.0
-chromadb>=0.5.0
-pymupdf>=1.24.0
+
+# PDF / image utilities
+pymupdf>=1.24.0          # fitz — PDF rasterisation fallback
+pdf2image>=1.17.0        # Poppler wrapper for OMR page images
+Pillow>=10.0.0
+
+# App
 streamlit>=1.35.0
+
+# CLI / utilities
+python-dotenv>=1.0.0
+requests>=2.31.0
+tqdm>=4.66.0
+click>=8.1.0
+pydantic>=2.0.0
