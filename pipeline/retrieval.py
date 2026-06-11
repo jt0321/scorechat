@@ -65,11 +65,12 @@ def retrieve(
             ss.texture_tag,
             ss.formal_function,
             ss.summary_text,
-            1 - (ss.embedding <=> :vec::vector) AS cosine_similarity
+            ss.musicxml_slice,
+            1 - (ss.embedding <=> CAST(:vec AS vector)) AS cosine_similarity
         FROM score_segments ss
         JOIN works w ON w.id = ss.work_id
         WHERE {where_clause}
-        ORDER BY ss.embedding <=> :vec::vector
+        ORDER BY ss.embedding <=> CAST(:vec AS vector)
         LIMIT :k
     """)
 
@@ -84,10 +85,10 @@ def retrieve(
             ts.source_type,
             ts.content,
             ts.url,
-            1 - (ts.embedding <=> :vec::vector) AS cosine_similarity
+            1 - (ts.embedding <=> CAST(:vec AS vector)) AS cosine_similarity
         FROM text_sources ts
         JOIN works w ON w.id = ts.work_id
-        ORDER BY ts.embedding <=> :vec::vector
+        ORDER BY ts.embedding <=> CAST(:vec AS vector)
         LIMIT :k
     """)
     text_rows = session.execute(text_sql, {"vec": str(query_vec), "k": top_k}).mappings().all()

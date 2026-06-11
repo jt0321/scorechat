@@ -343,10 +343,10 @@ def _download_pdfs(rows: list[dict]) -> None:
             print(f"  ✓ {filename} already exists, skipping.")
             continue
 
-        page_title = url.replace(IMSLP_BASE, "").replace("_", " ")
+        page_title = url.replace(IMSLP_BASE, "")
         params = {
             "action": "query", "titles": page_title,
-            "prop": "extlinks", "format": "json", "ellimit": "5",
+            "prop": "extlinks", "format": "json", "ellimit": "500",
         }
         try:
             resp = requests.get(IMSLP_API, params=params, headers=HEADERS, timeout=15)
@@ -355,14 +355,16 @@ def _download_pdfs(rows: list[dict]) -> None:
                 el.get("*", "")
                 for page_data in data.get("query", {}).get("pages", {}).values()
                 for el in page_data.get("extlinks", [])
-                if el.get("*", "").lower().endswith(".pdf")
+                if el.get("*", "").lower().endswith(".pdf") or "special:imagefromindex" in el.get("*", "").lower()
             ]
             if not pdf_links:
                 print(f"  ✗ No direct PDF links found for {row['work']}")
                 continue
             pdf_url = pdf_links[0]
             print(f"  Downloading {filename} from {pdf_url[:60]}…")
-            r = requests.get(pdf_url, headers=HEADERS, stream=True, timeout=30)
+            download_headers = HEADERS.copy()
+            download_headers["Cookie"] = "imslpdisclaimeraccepted=yes; redirectPassed=1"
+            r = requests.get(pdf_url, headers=download_headers, stream=True, timeout=30)
             r.raise_for_status()
             with open(out_path, "wb") as f:
                 for chunk in r.iter_content(chunk_size=8192):

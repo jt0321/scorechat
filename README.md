@@ -1,5 +1,7 @@
 # ScoreChat — Classical Score RAG
 
+![ScoreChat UI Mockup](scorechat_ui_mockup.png)
+
 Chat with piano scores. Drop public-domain PDFs (IMSLP) into `data/`, index them, and ask questions grounded in the actual notation and text — tempo markings, key signatures, form, bar numbers.
 
 Built with LangChain, FAISS, PyMuPDF, and Streamlit.

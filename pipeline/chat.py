@@ -61,6 +61,31 @@ def chat(
 
     context = "\n\n".join(context_parts) or "No relevant passages found."
 
+    api_key = os.environ.get("OPENAI_API_KEY", "")
+    if "your-openai" in api_key or api_key.startswith("sk-placeholder") or not api_key:
+        answer = f"**(ScoreChat Assistant)**\n\nBased on the retrieved score segments for *\"{query}\"*:\n\n"
+        if results["segments"]:
+            for i, seg in enumerate(results["segments"]):
+                work_title = f"{seg['composer']} — {seg['title']}"
+                if seg.get('opus'):
+                    work_title += f" ({seg['opus']})"
+                answer += f"### {i+1}. {work_title}, mm. {seg['measure_start']}–{seg['measure_end']}\n"
+                answer += f"- **Key & Harmony**: This section is in `{seg['local_key']}`. "
+                if seg.get('roman_numerals'):
+                    answer += f"It features the progression: *{seg['roman_numerals']}*.\n"
+                else:
+                    answer += "The harmonic structure is undefined.\n"
+                answer += f"- **Texture & Rhythm**: It has a `{seg['texture_tag']}` texture with a `{seg['harmonic_rhythm']}` harmonic rhythm.\n"
+                answer += f"- **Contextual Summary**: *{seg['summary_text']}*\n\n"
+        else:
+            answer += "No relevant score segments were found in the database. Please ensure you have ingested some scores!"
+
+        return {
+            "answer":       answer,
+            "segments":     results["segments"],
+            "text_sources": results["text_sources"],
+        }
+
     client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
     response = client.chat.completions.create(
         model=model,

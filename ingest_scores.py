@@ -81,17 +81,33 @@ def main(tool: str, window: int, mei: bool, force: bool):
 
         store_asset(work_id, "pdf", str(pdf))
 
-        click.echo(f"   Running OMR ({tool})...")
-        try:
-            xml_paths = ingest_score(str(pdf), tool=tool)
-        except Exception as e:
-            click.echo(f"   ✗ OMR failed: {e}")
-            continue
+        # Check if pre-existing symbolic score (.mscx, .musicxml, or .krn) exists in data/
+        mscx_path = pdf.with_suffix(".mscx")
+        xml_path = pdf.with_suffix(".musicxml")
+        krn_path = pdf.with_suffix(".krn")
+        xml_paths = []
 
-        click.echo(f"   → {len(xml_paths)} MusicXML file(s)")
+        if mscx_path.exists():
+            click.echo(f"   ✓ Pre-existing symbolic score found ({mscx_path.name}). Bypassing OMR.")
+            xml_paths = [mscx_path]
+        elif xml_path.exists():
+            click.echo(f"   ✓ Pre-existing symbolic score found ({xml_path.name}). Bypassing OMR.")
+            xml_paths = [xml_path]
+        elif krn_path.exists():
+            click.echo(f"   ✓ Pre-existing symbolic score found ({krn_path.name}). Bypassing OMR.")
+            xml_paths = [krn_path]
+        else:
+            click.echo(f"   Running OMR ({tool})...")
+            try:
+                xml_paths = ingest_score(str(pdf), tool=tool)
+            except Exception as e:
+                click.echo(f"   ✗ OMR failed: {e}")
+                continue
+
+        click.echo(f"   → {len(xml_paths)} score file(s)")
 
         for xml_path in xml_paths:
-            store_asset(work_id, "musicxml", str(xml_path), omr_tool=tool)
+            store_asset(work_id, "musicxml", str(xml_path), omr_tool="omr_bypass")
 
             if mei:
                 mei_path = musicxml_to_mei(str(xml_path))
