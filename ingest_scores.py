@@ -23,7 +23,10 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from download_scores import SCORES, DATA_DIR
-from db.store import upsert_work, store_asset, store_segments, store_text_chunks
+from db.store import (
+    upsert_work, store_asset, store_segments, store_text_chunks,
+    clear_work_segments_and_assets
+)
 from ingest.omr import ingest_score
 from analysis.analyzer import analyze_musicxml
 from pipeline.mei_converter import musicxml_to_mei
@@ -79,6 +82,9 @@ def main(tool: str, window: int, mei: bool, force: bool):
         work_id = upsert_work(work_meta)
         click.echo(f"   Work ID: {work_id}")
 
+        # Clear existing assets/segments to avoid duplicates
+        clear_work_segments_and_assets(work_id)
+
         store_asset(work_id, "pdf", str(pdf))
 
         # Check if pre-existing symbolic score (.mscx, .musicxml, or .krn) exists in data/
@@ -86,37 +92,57 @@ def main(tool: str, window: int, mei: bool, force: bool):
         xml_path = pdf.with_suffix(".musicxml")
         krn_path = pdf.with_suffix(".krn")
         xml_paths = []
+        omr_used = False
 
-        if mscx_path.exists():
-            click.echo(f"   ✓ Pre-existing symbolic score found ({mscx_path.name}). Bypassing OMR.")
-            xml_paths = [mscx_path]
-        elif xml_path.exists():
-            click.echo(f"   ✓ Pre-existing symbolic score found ({xml_path.name}). Bypassing OMR.")
+        if xml_path.exists():
+            click.echo(f"   ✓ Pre-existing MusicXML score found ({xml_path.name}). Bypassing OMR.")
             xml_paths = [xml_path]
         elif krn_path.exists():
-            click.echo(f"   ✓ Pre-existing symbolic score found ({krn_path.name}). Bypassing OMR.")
-            xml_paths = [krn_path]
+            click.echo(f"   ✓ Pre-existing Humdrum score found ({krn_path.name}). Bypassing OMR.")
+            try:
+                from music21 import converter
+                click.echo(f"     Converting {krn_path.name} to MusicXML...")
+                score = converter.parse(krn_path)
+                score.write("musicxml", fp=xml_path)
+                click.echo(f"     ✓ Converted and saved: {xml_path.name}")
+                xml_paths = [xml_path]
+            except Exception as e:
+                click.echo(f"     ✗ Conversion to MusicXML failed: {e}")
+                continue
+        elif mscx_path.exists():
+            click.echo(f"   ✓ Pre-existing MuseScore score found ({mscx_path.name}). Bypassing OMR.")
+            try:
+                from music21 import converter
+                click.echo(f"     Converting {mscx_path.name} to MusicXML...")
+                score = converter.parse(mscx_path)
+                score.write("musicxml", fp=xml_path)
+                click.echo(f"     ✓ Converted and saved: {xml_path.name}")
+                xml_paths = [xml_path]
+            except Exception as e:
+                click.echo(f"     ✗ Conversion to MusicXML failed: {e}")
+                continue
         else:
             click.echo(f"   Running OMR ({tool})...")
             try:
                 xml_paths = ingest_score(str(pdf), tool=tool)
+                omr_used = True
             except Exception as e:
                 click.echo(f"   ✗ OMR failed: {e}")
                 continue
 
         click.echo(f"   → {len(xml_paths)} score file(s)")
 
-        for xml_path in xml_paths:
-            store_asset(work_id, "musicxml", str(xml_path), omr_tool="omr_bypass")
+        for x_path in xml_paths:
+            store_asset(work_id, "musicxml", str(x_path), omr_tool=tool if omr_used else "omr_bypass")
 
             if mei:
-                mei_path = musicxml_to_mei(str(xml_path))
+                mei_path = musicxml_to_mei(str(x_path))
                 if mei_path:
                     store_asset(work_id, "mei", str(mei_path))
                     click.echo(f"   MEI → {mei_path}")
 
             try:
-                chunks, global_key = analyze_musicxml(str(xml_path), window=window)
+                chunks, global_key = analyze_musicxml(str(x_path), window=window)
             except Exception as e:
                 click.echo(f"   ✗ Analysis failed: {e}")
                 continue

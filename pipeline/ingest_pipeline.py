@@ -27,7 +27,10 @@ load_dotenv()
 
 from ingest.omr import ingest_score
 from analysis.analyzer import analyze_musicxml
-from db.store import upsert_work, store_asset, store_segments, store_text_chunks
+from db.store import (
+    upsert_work, store_asset, store_segments, store_text_chunks,
+    clear_work_segments_and_assets
+)
 from pipeline.mei_converter import musicxml_to_mei  # optional
 
 
@@ -58,27 +61,95 @@ def run(source, composer, title, opus, catalog, key, year,
     work_id = upsert_work(work_metadata)
     click.echo(f"  Work ID: {work_id}")
 
+    # Clear existing assets/segments to avoid duplicates
+    clear_work_segments_and_assets(work_id)
+
     # 2. Store original source asset
-    store_asset(work_id, asset_type="pdf" if source.endswith(".pdf") else "page_image",
-                file_path=source)
+    is_pdf = source.lower().endswith(".pdf")
+    store_asset(work_id, asset_type="pdf" if is_pdf else "page_image", file_path=source)
 
-    # 3. OMR: PDF/image → MusicXML
-    click.echo(f"  Running OMR ({tool})...")
-    xml_paths = ingest_score(source, tool=tool)
-    click.echo(f"  → {len(xml_paths)} MusicXML file(s) produced")
+    # Check for pre-existing symbolic score or if source is already symbolic
+    source_path = Path(source)
+    mscx_path = source_path.with_suffix(".mscx")
+    xml_path = source_path.with_suffix(".musicxml")
+    krn_path = source_path.with_suffix(".krn")
+    
+    xml_paths = []
+    omr_used = False
 
-    for xml_path in tqdm(xml_paths, desc="  Analyzing pages"):
-        store_asset(work_id, "musicxml", str(xml_path), omr_tool=tool)
+    if not is_pdf:
+        # If source itself is a symbolic score
+        if source_path.suffix.lower() == ".musicxml":
+            xml_paths = [source_path]
+        elif source_path.suffix.lower() in [".krn", ".mscx"]:
+            target_xml = source_path.with_suffix(".musicxml")
+            try:
+                from music21 import converter
+                click.echo(f"  Converting {source_path.name} to MusicXML...")
+                score = converter.parse(source_path)
+                score.write("musicxml", fp=target_xml)
+                click.echo(f"  ✓ Converted and saved: {target_xml.name}")
+                xml_paths = [target_xml]
+            except Exception as e:
+                click.echo(f"  ✗ Conversion to MusicXML failed: {e}")
+                return
+        else:
+            # Assume it's a page image to run OMR on
+            click.echo(f"  Running OMR ({tool})...")
+            xml_paths = ingest_score(source, tool=tool)
+            omr_used = True
+    else:
+        # If source is PDF, check for pre-existing symbolic files in the same directory
+        if xml_path.exists():
+            click.echo(f"  ✓ Pre-existing MusicXML score found ({xml_path.name}). Bypassing OMR.")
+            xml_paths = [xml_path]
+        elif krn_path.exists():
+            click.echo(f"  ✓ Pre-existing Humdrum score found ({krn_path.name}). Bypassing OMR.")
+            try:
+                from music21 import converter
+                click.echo(f"  Converting {krn_path.name} to MusicXML...")
+                score = converter.parse(krn_path)
+                score.write("musicxml", fp=xml_path)
+                click.echo(f"  ✓ Converted and saved: {xml_path.name}")
+                xml_paths = [xml_path]
+            except Exception as e:
+                click.echo(f"  ✗ Conversion to MusicXML failed: {e}")
+                return
+        elif mscx_path.exists():
+            click.echo(f"  ✓ Pre-existing MuseScore score found ({mscx_path.name}). Bypassing OMR.")
+            try:
+                from music21 import converter
+                click.echo(f"  Converting {mscx_path.name} to MusicXML...")
+                score = converter.parse(mscx_path)
+                score.write("musicxml", fp=xml_path)
+                click.echo(f"  ✓ Converted and saved: {xml_path.name}")
+                xml_paths = [xml_path]
+            except Exception as e:
+                click.echo(f"  ✗ Conversion to MusicXML failed: {e}")
+                return
+        else:
+            click.echo(f"  Running OMR ({tool})...")
+            try:
+                xml_paths = ingest_score(source, tool=tool)
+                omr_used = True
+            except Exception as e:
+                click.echo(f"  ✗ OMR failed: {e}")
+                return
+
+    click.echo(f"  → {len(xml_paths)} score file(s)")
+
+    for x_path in tqdm(xml_paths, desc="  Analyzing pages"):
+        store_asset(work_id, "musicxml", str(x_path), omr_tool=tool if omr_used else "omr_bypass")
 
         # 4. Optional MEI conversion via Verovio CLI
         if convert_mei:
-            mei_path = musicxml_to_mei(str(xml_path))
+            mei_path = musicxml_to_mei(str(x_path))
             if mei_path:
                 store_asset(work_id, "mei", str(mei_path))
                 click.echo(f"    MEI → {mei_path}")
 
         # 5. music21 analysis → measure chunks
-        chunks, global_key = analyze_musicxml(str(xml_path), window=window)
+        chunks, global_key = analyze_musicxml(str(x_path), window=window)
         click.echo(f"    {len(chunks)} measure chunks extracted (global key: {global_key})")
 
         # 6. Embed summaries + store in score_segments

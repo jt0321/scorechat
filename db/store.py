@@ -94,3 +94,15 @@ def store_text_chunks(work_id: int, chunks: list[dict]) -> None:
         session.add(ts)
 
     session.commit()
+
+
+def clear_work_segments_and_assets(work_id: int) -> None:
+    """Clear segments, assets, and text sources for a work to allow clean re-ingestion."""
+    session = get_session()
+    session.query(ScoreSegment).filter_by(work_id=work_id).delete()
+    # Delete text sources (like wikipedia or imslp text chunks)
+    session.query(TextSource).filter_by(work_id=work_id).delete()
+    # Delete all assets (PDF will be re-added by the ingestion script)
+    session.query(ScoreAsset).filter_by(work_id=work_id).delete()
+    session.commit()
+
