@@ -7,6 +7,9 @@ dependencies = [
     "music21>=9.1.0",
     # Embeddings + LLM
     "openai>=1.30.0",
+    "langchain>=0.3.0",
+    "langchain-openai>=0.2.0",
+    "langchain-core>=0.3.0",
     # Vector store
     "pgvector>=0.3.0",
     "psycopg2-binary>=2.9.9",
@@ -29,6 +32,9 @@ dependencies = [
 # OMR engines — install whichever you use
 oemer     = ["oemer>=0.1.7"]
 verovio   = ["verovio>=3.15.0"]   # also needed for MEI export
+# Model providers — install whichever CHAT_PROVIDER/EMBEDDING_PROVIDER you set (see .env.example)
+anthropic = ["langchain-anthropic>=0.3.0"]
+ollama    = ["langchain-ollama>=0.3.0"]
 dev       = ["pytest>=8.0.0", "pytest-cov>=5.0.0"]
 
 [project.scripts]

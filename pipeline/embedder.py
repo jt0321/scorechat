@@ -1,59 +1,44 @@
 """
 pipeline/embedder.py
-Generates OpenAI embeddings for score segment summaries and text chunks.
+Generates embeddings for score segment summaries and text chunks via
+whichever LangChain embeddings backend EMBEDDING_PROVIDER selects
+(see pipeline/providers.py).
 """
 
-import os
-import time
+from __future__ import annotations
 from typing import Optional
-from openai import OpenAI
+from pipeline.providers import get_embeddings_model, embedding_provider_ready
 
-_client: Optional[OpenAI] = None
-
-
-def get_client() -> OpenAI:
-    global _client
-    if _client is None:
-        _client = OpenAI(api_key=os.environ["OPENAI_API_KEY"])
-    return _client
+_embeddings = None
+_embeddings_model: Optional[str] = None
 
 
-def embed_texts(texts: list[str], model: str = "text-embedding-3-small") -> list[list[float]]:
+def get_embeddings(model: Optional[str] = None):
+    global _embeddings, _embeddings_model
+    if _embeddings is None or _embeddings_model != model:
+        _embeddings = get_embeddings_model(model=model)
+        _embeddings_model = model
+    return _embeddings
+
+
+def embed_texts(texts: list[str], model: Optional[str] = None) -> list[list[float]]:
     """
     Embed a batch of texts. Returns list of embedding vectors.
-    Batches in groups of 100 to respect API limits; retries on rate limit.
     """
-    api_key = os.environ.get("OPENAI_API_KEY", "")
-    if "your-openai" in api_key or api_key.startswith("sk-placeholder") or not api_key:
+    if not embedding_provider_ready():
         import random
         vectors = []
-        for text in texts:
-            random.seed(hash(text))
+        for t in texts:
+            random.seed(hash(t))
             vec = [random.uniform(-1, 1) for _ in range(1536)]
-            mag = sum(x*x for x in vec) ** 0.5
+            mag = sum(x * x for x in vec) ** 0.5
             vectors.append([x / mag for x in vec])
         return vectors
 
-    client = get_client()
-    vectors = []
-    batch_size = 100
-
-    for i in range(0, len(texts), batch_size):
-        batch = texts[i:i + batch_size]
-        for attempt in range(3):
-            try:
-                response = client.embeddings.create(input=batch, model=model)
-                vectors.extend([item.embedding for item in response.data])
-                break
-            except Exception as e:
-                if attempt == 2:
-                    raise
-                wait = 2 ** attempt
-                print(f"Embedding attempt {attempt+1} failed: {e}. Retrying in {wait}s...")
-                time.sleep(wait)
-
-    return vectors
+    return get_embeddings(model=model).embed_documents(texts)
 
 
-def embed_single(text: str, model: str = "text-embedding-3-small") -> list[float]:
-    return embed_texts([text], model=model)[0]
+def embed_single(text: str, model: Optional[str] = None) -> list[float]:
+    if not embedding_provider_ready():
+        return embed_texts([text], model=model)[0]
+    return get_embeddings(model=model).embed_query(text)
