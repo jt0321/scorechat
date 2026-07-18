@@ -2,7 +2,7 @@
 ingest_scores.py
 ----------------
 Batch-ingests all Humdrum (.krn) files in ./data/ through the symbolic RAG pipeline:
-  Humdrum (.krn) → MusicXML → MEI (via Verovio) → music21 analysis → pgvector (PostgreSQL)
+  Humdrum (.krn) → MEI (via Verovio) → music21 analysis → pgvector (PostgreSQL)
 
 Prerequisites:
     python download_beethoven_piano_sonatas.py  # fetch .krn files
@@ -21,8 +21,8 @@ from db.store import (
     upsert_work, store_asset, store_segments,
     clear_work_segments_and_assets
 )
-from analysis.analyzer import analyze_musicxml
-from pipeline.mei_converter import musicxml_to_mei
+from analysis.analyzer import analyze_score
+from pipeline.mei_converter import score_to_mei
 
 def parse_krn_metadata(krn_path: Path) -> dict:
     """Parse standard Humdrum metadata headers for title, composer, opus, movement, etc."""
@@ -108,9 +108,7 @@ def parse_krn_metadata(krn_path: Path) -> dict:
 @click.command()
 @click.option("--window", default=4, type=int, show_default=True,
               help="Measures per analysis chunk")
-@click.option("--force",  is_flag=True, default=False,
-              help="Force re-conversion and re-analysis")
-def main(window: int, force: bool):
+def main(window: int):
     krns = sorted(DATA_DIR.glob("*.krn"))
     if not krns:
         click.echo(f"No Humdrum (.krn) files found in ./{DATA_DIR}/ — run download_beethoven_piano_sonatas.py first.")
@@ -137,37 +135,21 @@ def main(window: int, force: bool):
         # Clear existing assets/segments to avoid duplicates
         clear_work_segments_and_assets(work_id)
 
-        # Convert Humdrum to MusicXML for analysis & slicing
-        xml_path = krn.with_suffix(".musicxml")
-        if not xml_path.exists() or force:
-            try:
-                from music21 import converter
-                click.echo(f"   Converting {krn.name} to MusicXML...")
-                score = converter.parse(krn)
-                # Write to MusicXML
-                score.write("musicxml", fp=xml_path)
-                click.echo(f"   ✓ Converted and saved: {xml_path.name}")
-            except Exception as e:
-                click.echo(f"   ✗ Conversion to MusicXML failed: {e}")
-                continue
-        else:
-            click.echo(f"   ✓ Existing MusicXML score found ({xml_path.name}).")
+        # Save Humdrum (.krn) asset directly in DB
+        store_asset(work_id, "krn", str(krn))
 
-        # Save assets in DB
-        store_asset(work_id, "musicxml", str(xml_path))
-
-        # Generate MEI file using Verovio (needed for SVG rendering)
-        mei_path = musicxml_to_mei(str(xml_path))
+        # Generate MEI file dynamically using Verovio (needed for SVG rendering)
+        mei_path = score_to_mei(str(krn))
         if mei_path:
             store_asset(work_id, "mei", str(mei_path))
             click.echo(f"   ✓ MEI file generated → {mei_path.name}")
         else:
             click.echo("   ✗ MEI generation failed.")
 
-        # Run music21 analysis and segment score
+        # Run music21 analysis directly on .krn and segment score
         click.echo("   Analyzing musical features...")
         try:
-            chunks, global_key = analyze_musicxml(str(xml_path), window=window)
+            chunks, global_key = analyze_score(str(krn), window=window)
             click.echo(f"   ✓ {len(chunks)} chunks extracted (global key: {global_key})")
             store_segments(work_id, chunks)
             click.echo(f"   ✓ Done ingesting\n")

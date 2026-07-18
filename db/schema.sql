@@ -18,11 +18,11 @@ CREATE TABLE works (
     created_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Score assets: PDFs, page images
+-- Score assets: PDFs, page images, Humdrum files
 CREATE TABLE score_assets (
     id          SERIAL PRIMARY KEY,
     work_id     INT REFERENCES works(id) ON DELETE CASCADE,
-    asset_type  TEXT NOT NULL CHECK (asset_type IN ('pdf','page_image','musicxml','mei','midi')),
+    asset_type  TEXT NOT NULL CHECK (asset_type IN ('pdf','page_image','musicxml','mei','midi','krn')),
     file_path   TEXT NOT NULL,
     page_number INT,
     omr_tool    TEXT,             -- e.g. "oemer", "audiveris"

@@ -9,9 +9,9 @@ from pathlib import Path
 from typing import Optional
 
 
-def musicxml_to_mei(xml_path: str, output_dir: Optional[str] = None) -> Optional[Path]:
+def score_to_mei(score_path: str, output_dir: Optional[str] = None) -> Optional[Path]:
     """
-    Convert MusicXML → MEI using verovio Python bindings.
+    Convert a symbolic score file (MusicXML or Humdrum) → MEI using verovio Python bindings.
     Returns the path to the .mei file, or None on failure.
     """
     try:
@@ -20,27 +20,30 @@ def musicxml_to_mei(xml_path: str, output_dir: Optional[str] = None) -> Optional
         print("verovio not installed. Skipping MEI conversion. (pip install verovio)")
         return None
 
-    xml_path = Path(xml_path)
+    score_path = Path(score_path)
     if output_dir is None:
-        output_dir = xml_path.parent / "mei"
+        output_dir = score_path.parent / "mei"
     Path(output_dir).mkdir(parents=True, exist_ok=True)
+
+    ext = score_path.suffix.lower()
+    input_format = "humdrum" if ext == ".krn" else "musicxml"
 
     tk = verovio.toolkit()
     tk.setOptions({
-        "inputFrom": "musicxml",
+        "inputFrom": input_format,
         "outputTo":  "mei",
     })
 
-    with open(xml_path, "r", encoding="utf-8") as f:
-        xml_str = f.read()
+    with open(score_path, "r", encoding="utf-8") as f:
+        score_str = f.read()
 
-    ok = tk.loadData(xml_str)
+    ok = tk.loadData(score_str)
     if not ok:
-        print(f"Verovio failed to load {xml_path}")
+        print(f"Verovio failed to load {score_path}")
         return None
 
     mei_str = tk.getMEI()
-    mei_path = Path(output_dir) / f"{xml_path.stem}.mei"
+    mei_path = Path(output_dir) / f"{score_path.stem}.mei"
     mei_path.write_text(mei_str, encoding="utf-8")
     return mei_path
 

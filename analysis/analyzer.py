@@ -46,12 +46,12 @@ def detect_texture(measures: stream.Stream) -> str:
     return "cantabile"
 
 
-def analyze_musicxml(xml_path: str, window: int = 4) -> tuple[list[MeasureChunk], str]:
+def analyze_score(score_path: str, window: int = 4) -> tuple[list[MeasureChunk], str]:
     """
-    Parse a MusicXML file and return a list of MeasureChunk objects,
+    Parse a score file (Humdrum, MusicXML, etc.) and return a list of MeasureChunk objects,
     windowed by `window` measures (analogous to paragraph-level chunking).
     """
-    score = converter.parse(xml_path)
+    score = converter.parse(score_path)
     parts = score.parts
 
     # Key analysis over full score

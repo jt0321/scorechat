@@ -34,7 +34,7 @@ class Work(Base):
 class ScoreAsset(Base):
     __tablename__ = "score_assets"
     __table_args__ = (
-        CheckConstraint("asset_type IN ('pdf','page_image','musicxml','mei','midi')"),
+        CheckConstraint("asset_type IN ('pdf','page_image','musicxml','mei','midi','krn')"),
     )
 
     id          = Column(Integer, primary_key=True)
