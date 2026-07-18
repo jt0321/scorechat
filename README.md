@@ -1,18 +1,36 @@
-# ScoreChat — Classical Score RAG
+# ScoreChat — Classical Score RAG (Humdrum Edition)
 
 ![ScoreChat Logo](scorechat_ui_mockup.png)
 
-ScoreChat is a Retrieval-Augmented Generation (RAG) system that allows you to chat directly with classical piano scores. It ingests public-domain sheet music (via Humdrum `.krn` or standard MusicXML), extracts musical features (local keys, Roman numerals, texture, and harmonic rhythm) using `music21`, encodes them as vector embeddings, and stores them in PostgreSQL (`pgvector`). The assistant answers musical queries grounded in the actual notation with measure-level citations and interactive SVG notation rendering.
+ScoreChat is a Retrieval-Augmented Generation (RAG) system that allows you to chat directly with classical piano scores. By narrowing our scope, we bypass error-prone PDF Optical Music Recognition (OMR) and focus entirely on high-quality symbolic scores in the **Humdrum (`*.krn`)** format.
+
+The system downloads Humdrum scores directly from the [craigsapp/beethoven-piano-sonatas](https://github.com/craigsapp/beethoven-piano-sonatas) repository, converts them to standard MusicXML using `music21`, performs harmonic/texture analysis on measure-level slices, generates embeddings using OpenAI models, and stores them in PostgreSQL with `pgvector`. A web client renders the exact notation slices retrieved during chat sessions dynamically via the **Verovio** WASM toolkit in the browser.
+
+---
+
+## Simplified Pipeline Flow
+
+```mermaid
+graph TD
+    A[Download .krn via download_beethoven_piano_sonatas.py] --> B[Convert .krn to .musicxml using music21]
+    B --> C[Generate MEI using Verovio bindings]
+    B --> D[Analyze musical features using music21]
+    D --> E[Segment score into measure chunks]
+    E --> F[Generate embeddings for chunks]
+    F --> G[Store segments & vectors in pgvector]
+    G --> H[Query chatbot via Streamlit or HTML/JS UI]
+    H --> I[Retrieve segments & render SVG slices in UI via Verovio WASM]
+```
 
 ---
 
 ## Features
 
-- **High-Quality Symbolic Ingestion**: Supports direct ingestion of Humdrum (`.krn`) and MuseScore (`.mscx`) files, automatically converting them to standardized `.musicxml` files via `music21`.
-- **Musical Feature Analysis**: Automatically partitions scores into measure-level chunks, extracting local key signatures, Roman numeral progressions, harmonic rhythm, and texture classifications.
-- **WASM Notation Rendering**: Generates MEI (`.mei`) files via `verovio`, allowing the frontend to dynamically render exact SVG notation slices of the retrieved measures.
-- **Hybrid Vector Retrieval**: Combines pgvector cosine similarity search on musical/analytical summaries with traditional metadata filters.
-- **Double Interface**: Offer both a clean **Streamlit chatbot** and a customized **HTML/JS frontend** served via a Python HTTP server.
+- **High-Quality Symbolic Ingestion**: Pulls verified Humdrum (`.krn`) files directly from GitHub.
+- **Auto-Conversion & Analysis**: Converts `.krn` to MusicXML via `music21` and performs local key, Roman numeral progression, harmonic rhythm, and texture analyses.
+- **WASM Notation Rendering**: Generates MEI (`.mei`) files via `verovio` python bindings so that the frontend can dynamically render exact SVG notation slices of the retrieved measures.
+- **Hybrid Vector Retrieval**: Combines `pgvector` similarity search on musical analytical summaries with metadata filtering.
+- **Double Interface**: Offers both a clean **Streamlit chatbot** and a customized split-screen **HTML/JS frontend** served via a Python HTTP server.
 
 ---
 
@@ -23,7 +41,7 @@ Create a virtual environment and install the required dependencies (requires `uv
 ```bash
 uv venv
 source .venv/bin/activate
-uv pip install -r requirements.txt
+uv pip install -e .
 ```
 
 ### 2. Launch the Vector Database
@@ -40,13 +58,13 @@ cp .env.example .env
 ```
 
 ### 4. Ingest Repertoire
-Download public-domain PDFs from IMSLP and push the scores through the database pipeline:
+Download the Beethoven piano sonata Humdrum files and index them into the database:
 ```bash
-# Download PDFs
-python download_scores.py
+# Download Humdrum files (defaults to Sonata No. 32 / Op. 111)
+python download_beethoven_piano_sonatas.py --sonata 32
 
-# Ingest and convert pre-existing symbolic scores (converting .krn -> .musicxml -> .mei)
-python ingest_scores.py --mei
+# Parse, analyze, and ingest the scores into postgres
+python ingest_scores.py
 ```
 
 ### 5. Launch the Web Interface
@@ -70,33 +88,27 @@ You can run either of the two user interfaces:
 ```
 scorechat/
 ├── data/
-│   ├── beethoven_piano_sonata_no_32_in_c_minor.krn      # Raw Humdrum score (ground truth)
-│   ├── beethoven_piano_sonata_no_32_in_c_minor.musicxml # Auto-generated standard MusicXML
+│   ├── sonata32-1.krn            # Raw Humdrum score downloaded from GitHub
+│   ├── sonata32-1.musicxml       # Auto-generated standard MusicXML
 │   └── mei/
-│       └── beethoven_piano_sonata_no_32_in_c_minor.mei  # Auto-generated MEI for SVG rendering
+│       └── sonata32-1.mei        # Auto-generated MEI for browser SVG rendering
 ├── db/
-│   ├── models.py          # SQLAlchemy models for Works, Assets, and Segments
-│   ├── schema.sql         # SQL schema definitions for pgvector tables
-│   └── store.py           # Database persistence and cleanup functions
-├── ingest/
-│   └── omr.py             # Fitz-based PDF page rendering and OMR fallbacks (oemer/audiveris)
+│   ├── models.py                 # SQLAlchemy models for Works, Assets, and Segments
+│   ├── schema.sql                # SQL schema definitions for pgvector tables
+│   └── store.py                  # Database persistence and cleanup functions
 ├── analysis/
-│   └── analyzer.py        # music21-based musical feature extraction and segmentation
+│   └── analyzer.py               # music21-based musical feature extraction and segmentation
 ├── pipeline/
-│   ├── chat.py            # RAG chat logic and LLM prompt framing
-│   ├── retrieval.py       # pgvector cosine similarity score search
-│   ├── embedder.py        # OpenAI text embeddings generator
-│   └── mei_converter.py   # Verovio-based MusicXML-to-MEI converter
+│   ├── chat.py                   # RAG chat logic and LLM prompt framing
+│   ├── retrieval.py              # pgvector cosine similarity score search
+│   ├── embedder.py               # OpenAI text embeddings generator
+│   └── mei_converter.py          # Verovio-based MusicXML-to-MEI converter
 ├── frontend/
-│   ├── index.html         # Custom HTML/JS chat client and notation viewer
-│   └── score_viewer.html  # Standalone score rendering panel
-├── download_scores.py     # Pulls public-domain PDFs from IMSLP
-├── ingest_scores.py       # Batch ingests all files in data/ to postgres
-├── server.py              # API server and static host for the HTML/JS client
-└── scorechat_app.py       # Alternative Streamlit chatbot UI
+│   ├── index.html                # Custom HTML/JS chat client and notation viewer
+│   └── score_viewer.html         # Standalone score rendering panel
+├── download_beethoven_piano_sonatas.py # Downloads .krn files from craigsapp/beethoven-piano-sonatas
+├── ingest_scores.py              # Batch converts, analyzes, and indexes data/*.krn to postgres
+├── server.py                     # API server and static host for the HTML/JS client
+├── scorechat_app.py              # Alternative Streamlit chatbot UI
+└── pyproject.toml                # Project packaging and dependencies configuration
 ```
-
----
-
-## Note on OMR (Optical Music Recognition)
-PDF-to-symbolic conversion using OMR tools (like `oemer`) is highly error-prone on complex, multi-page classical piano music (e.g., late Beethoven sonatas). For data integrity, the ScoreChat pipeline prioritizes **pre-existing symbolic scores** (`.krn` or `.musicxml`) placed in `data/`, automatically converting them to MusicXML and MEI, and bypassing the error-prone OMR step.

@@ -108,19 +108,26 @@ def render_score_slice_in_streamlit(musicxml_slice: str, start: int, end: int):
 
 load_dotenv()
 
-FRSM_CSV = Path("data/frsm_scores.csv")
-
+from db.session import get_session
+from db.models import Work
 
 @st.cache_data(show_spinner=False)
-def load_frsm_scores() -> dict[str, list[dict]]:
-    """Load FRSM score list from CSV; return dict keyed by composer."""
-    if not FRSM_CSV.exists():
+def load_ingested_works() -> dict[str, list[dict]]:
+    """Load ingested works from database; return dict keyed by composer."""
+    try:
+        session = get_session()
+        works = session.query(Work).order_by(Work.title).all()
+        res = defaultdict(list)
+        for w in works:
+            res[w.composer].append({
+                "work": w.title,
+                "opus": w.opus,
+                "catalog": w.catalog_no,
+                "imslp_url": w.imslp_url
+            })
+        return dict(res)
+    except Exception as e:
         return {}
-    scores: dict[str, list[dict]] = defaultdict(list)
-    with open(FRSM_CSV, newline="", encoding="utf-8") as f:
-        for row in csv.DictReader(f):
-            scores[row["composer"]].append(row)
-    return dict(scores)
 
 
 @st.cache_resource(show_spinner="Connecting to pipeline...")
@@ -129,22 +136,20 @@ def _warmup():
 
 
 def main():
-    st.set_page_config(page_title="ScoreChat", page_icon="\U0001f3bc", layout="wide")
-    st.title("\U0001f3bc ScoreChat")
-    st.caption("Classical Score RAG — ask questions grounded in your uploaded scores.")
+    st.set_page_config(page_title="ScoreChat", page_icon="🎼", layout="wide")
+    st.title("🎼 ScoreChat")
+    st.caption("Classical Score RAG — ask questions grounded in your ingested scores.")
 
     with st.sidebar:
-        st.header("FRSM Repertoire")
-        frsm = load_frsm_scores()
-        if frsm:
-            for composer in sorted(frsm.keys()):
+        st.header("Ingested Repertoire")
+        works = load_ingested_works()
+        if works:
+            for composer in sorted(works.keys()):
                 with st.expander(composer):
-                    for row in frsm[composer]:
+                    for row in works[composer]:
                         label = row["work"]
-                        if row.get("nickname"):
-                            label += f" “{row['nickname']}”"
                         if row.get("opus"):
-                            label += f", Op. {row['opus'].lstrip('Op. ')}"
+                            label += f", {row['opus']}"
                         elif row.get("catalog"):
                             label += f", {row['catalog']}"
                         if row.get("imslp_url"):
@@ -153,8 +158,9 @@ def main():
                             st.markdown(f"- {label}")
         else:
             st.caption(
-                "No FRSM CSV found. "
-                "Run `python download_scores.py --csv data/frsm_scores.csv`."
+                "No ingested works found. "
+                "Run `python download_beethoven_piano_sonatas.py` and "
+                "`python ingest_scores.py`."
             )
 
     _warmup()
