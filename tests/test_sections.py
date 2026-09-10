@@ -32,12 +32,44 @@ def _by_label(sections):
 # --- parsing ---------------------------------------------------------------
 
 def test_expansion_and_ranges_are_read_from_the_first_column():
-    source = "*>[A,A,B]\tx\n*>A\tx\n=1\tx\n=2\tx\n*>B\tx\n=3\tx\n=4\tx\n"
+    source = "*>[A,A,B]\tx\n*>A\tx\n=1\tx\n=2\tx\n=3\tx\n*>B\tx\n=4\tx\n"
     expansion, sections = parse_notated_sections(source)
     assert expansion == ["A", "A", "B"]
     assert [(s.label, s.measure_start, s.measure_end, s.play_count) for s in sections] == [
         ("A", 1, 2, 2), ("B", 3, 4, 1),
     ]
+
+
+def test_a_label_starts_at_the_barline_it_follows():
+    """`*>B` is written immediately after the barline that opens section B, so
+    that barline is B's first measure and not A's last.
+
+    Op. 111 marks `=19!|:` then `*>B` and its Allegro is bar 19; reading the
+    barline as the end of the introduction would date every section in the
+    corpus one bar late.
+    """
+    source = "*>[A,B,B]\tx\n*>A\tx\n=1\tx\n4c\tx\n=19!|:\tx\n*>B\tx\n4c\tx\n=20\tx\n"
+    _, sections = parse_notated_sections(source)
+    ranges = _by_label(sections)
+    assert ranges["A"].measure_start == 1 and ranges["A"].measure_end == 18
+    assert ranges["B"].measure_start == 19
+
+
+def test_a_label_after_an_unnumbered_barline_takes_the_next_number():
+    """A plain repeat sign carries no measure number, so the section it opens
+    starts at the next numbered barline -- how 46 of the corpus's in-score
+    labels are introduced."""
+    source = "*>[A,A,B,B]\tx\n*>A\tx\n=1\tx\n4c\tx\n=:|!|:\tx\n*>B\tx\n4c\tx\n=49\tx\n"
+    _, sections = parse_notated_sections(source)
+    assert _by_label(sections)["B"].measure_start == 49
+
+
+def test_a_comment_does_not_separate_a_label_from_its_barline():
+    """Humdrum layout comments (`!!LO:...`) sit between the barline and the
+    section label throughout this corpus."""
+    source = "*>[A,B]\tx\n*>A\tx\n=1\tx\n4c\tx\n=9\tx\n!!LO:LB:g=original\n*>B\tx\n4c\tx\n=10\tx\n"
+    _, sections = parse_notated_sections(source)
+    assert _by_label(sections)["B"].measure_start == 9
 
 
 def test_norep_expansion_is_ignored():

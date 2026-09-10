@@ -81,6 +81,41 @@ musical analysis.
   in the key it was stated in — the signal that distinguishes a recapitulation
   from a transposed restatement.
 
+## Evaluation
+
+`evaluate_form.py` scores the pipeline against `evaluation/ground_truth.json`,
+ten movements whose form is known independently. It reads only the database, so
+it scores what the pipeline has actually stored, and re-running it after a
+threshold change says whether the change helped or merely moved the failures.
+
+```bash
+python evaluate_form.py --verbose
+```
+
+The ground truth records two different bars for the return of the opening
+material, and the distinction is the point. `recapitulation` is where published
+analysis puts the start of the recapitulation; `literal_return` is where
+note-for-note correspondence with the exposition actually resumes. They coincide
+when Beethoven brings the theme back unaltered (Op. 2 No. 1/i, m. 101) and
+diverge when he recomposes its first bars — the Waldstein's recapitulation is at
+m. 156 but correspondence with m. 3 does not resume until m. 160. A symbolic
+matcher can only ever find the second, so that is what it is scored against,
+with the published bar recorded alongside so the gap stays visible.
+
+Three entries record no literal return at all. Those are real negatives the
+pipeline must also return nothing for, which is what stops the metrics from
+being improved by lowering a threshold. `return_recall` (was the return
+proposed at all) is scored apart from `return` (was it ranked first), because
+locating a passage and ranking it are different jobs and nothing yet does the
+second.
+
+Current result, at a tolerance of four bars: **44/50**, with `home_key` and
+`exposition_start` at 10/10, `return_recall` at 9/10, `return` at 8/10, and
+`citable` at 7/10. The `citable` failures are the most consequential: 87
+measures across the corpus carry no printed number, and in Op. 2 No. 2/i that
+turns a correctly identified recapitulation (`repeats 0.861, mm. 1–19 →
+mm. 229–247`) into an uncitable one reported as mm. 0–247.
+
 Span analyses and relations have a review lifecycle: `proposed`, `accepted`,
 or `rejected`. The current pipeline creates only `proposed` analytical claims;
 the user interface does not yet expose review controls. A future UI should let

@@ -1,0 +1,132 @@
+{
+  "_readme": [
+    "Ground truth for the form-finding evaluation. Each entry names a movement by",
+    "opus and movement number -- never by work id, which is assigned at ingest and",
+    "changes when the corpus is rebuilt -- and every bar number below is a PRINTED",
+    "bar number, the kind a performer reads and the kind the LLM must cite.",
+    "",
+    "Two different bars are recorded for the return of the opening material and the",
+    "distinction matters, because conflating them would let the harness score a",
+    "correct answer as wrong:",
+    "",
+    "  recapitulation  -- where published analysis puts the start of the recap.",
+    "  literal_return  -- where note-for-note correspondence with the exposition",
+    "                     actually begins in this encoding.",
+    "",
+    "They coincide when Beethoven brings the theme back unaltered and diverge when",
+    "he recomposes its first bars: the Waldstein's recapitulation is at m. 156 but",
+    "its literal correspondence with m. 3 does not begin until m. 160. A symbolic",
+    "matcher can only ever find the second. `literal_return` is therefore what the",
+    "pipeline is scored against, and it is verified rather than remembered -- every",
+    "value carries a `verified` score, the varies/repeats confidence measured over",
+    "an 8-bar window between it and `exposition_start`. `recapitulation` is recorded",
+    "alongside it so the gap between what is findable and what a musician would say",
+    "stays visible instead of being quietly defined away.",
+    "",
+    "A null `literal_return` is a real negative, not missing data: no window in the",
+    "movement matches the opening well enough to be called a return."
+  ],
+  "tolerance_measures": 4,
+  "movements": [
+    {
+      "opus": "Op. 2 No. 1",
+      "movement": 1,
+      "home_key": "f minor",
+      "exposition_start": 1,
+      "recapitulation": 101,
+      "literal_return": 101,
+      "verified": 1.0,
+      "notes": "Theme returns unaltered; recapitulation and literal return coincide."
+    },
+    {
+      "opus": "Op. 2 No. 2",
+      "movement": 1,
+      "home_key": "A major",
+      "exposition_start": 1,
+      "recapitulation": 226,
+      "literal_return": 229,
+      "verified": 1.0,
+      "notes": "Three recomposed bars lead into the literal return."
+    },
+    {
+      "opus": "Op. 10 No. 1",
+      "movement": 1,
+      "home_key": "c minor",
+      "exposition_start": 1,
+      "recapitulation": 168,
+      "literal_return": 168,
+      "verified": 1.0,
+      "notes": "Theme returns unaltered."
+    },
+    {
+      "opus": "Op. 13",
+      "movement": 1,
+      "home_key": "c minor",
+      "exposition_start": 11,
+      "recapitulation": 195,
+      "literal_return": 197,
+      "verified": 1.0,
+      "notes": "Grave introduction mm. 1-10; the Allegro exposition proper begins at m. 11, and the recapitulation re-enters two bars before correspondence resumes."
+    },
+    {
+      "opus": "Op. 27 No. 2",
+      "movement": 3,
+      "home_key": "c# minor",
+      "exposition_start": 1,
+      "recapitulation": 103,
+      "literal_return": 103,
+      "verified": 1.0,
+      "notes": "Arpeggio theme returns at pitch; the second group is what moves up a fourth."
+    },
+    {
+      "opus": "Op. 31 No. 2",
+      "movement": 1,
+      "home_key": "d minor",
+      "exposition_start": 1,
+      "recapitulation": 143,
+      "literal_return": 151,
+      "verified": 0.92,
+      "notes": "The recapitulation opens with the Largo arpeggio and recitative; the Allegro material only lines up again eight bars later."
+    },
+    {
+      "opus": "Op. 53",
+      "movement": 1,
+      "home_key": "C major",
+      "exposition_start": 3,
+      "recapitulation": 156,
+      "literal_return": 160,
+      "verified": 1.0,
+      "notes": "Recapitulation is recomposed for four bars before mm. 3ff resume verbatim."
+    },
+    {
+      "opus": "Op. 57",
+      "movement": 1,
+      "home_key": "f minor",
+      "exposition_start": 1,
+      "recapitulation": 135,
+      "literal_return": null,
+      "verified": 0.59,
+      "notes": "Known negative. The theme returns over a drumming tonic pedal that the exposition does not have, so no window reaches a return threshold. Also the movement with no notated exposition repeat."
+    },
+    {
+      "opus": "Op. 57",
+      "movement": 3,
+      "home_key": "f minor",
+      "exposition_start": 1,
+      "recapitulation": 212,
+      "literal_return": null,
+      "verified": 0.73,
+      "notes": "Known negative. The movement whose second section repeats rather than its first."
+    },
+    {
+      "opus": "Op. 111",
+      "movement": 1,
+      "home_key": "c minor",
+      "exposition_start": 19,
+      "recapitulation": 55,
+      "literal_return": null,
+      "verified": 0.64,
+      "notes": "Known negative. Maestoso introduction mm. 1-18; the fugal subject is developed continuously rather than restated, which is what makes the return hard to find."
+    }
+  ]
+}

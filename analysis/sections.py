@@ -51,17 +51,32 @@ def _first_column(line: str) -> str:
 def parse_notated_sections(source_text: str) -> tuple[list[str], list[NotatedSection]]:
     """Expansion order and labelled sections with their measure ranges.
 
-    Returns ([] , []) for a score that labels no sections — 43 of this corpus's
+    A `*>B` record sits immediately after the barline that opens its section,
+    so section B begins at *that* barline's measure, not the following one --
+    Op. 111 marks `=19!|:` then `*>B`, and its Allegro is bar 19. Treating the
+    barline as belonging to the outgoing section instead puts every boundary in
+    the corpus one bar late. Where the barline carries no number (`=:|!|:`, a
+    plain repeat sign, which is how 46 of this corpus's 304 in-score labels are
+    introduced) the next numbered barline is the section's first measure.
+
+    Ends are derived from the next section's start rather than collected, so a
+    section cannot claim a barline that opens its successor.
+
+    Returns ([], []) for a score that labels no sections -- 42 of this corpus's
     103 movements carry no expansion record at all, which is itself meaningful:
     a movement with nothing marked to repeat is not built on a repeat scheme.
     """
     expansion: list[str] = []
     order: list[str] = []
-    bars: dict[str, list[int]] = {}
-    current: str | None = None
+    starts: dict[str, int] = {}
+    awaiting: list[str] = []   # labels whose opening barline is not yet numbered
+    last_barline: int | None = None   # number of the barline just read, if adjacent
+    last_measure = 0
 
     for line in source_text.splitlines():
         token = _first_column(line)
+        if line.startswith("!"):
+            continue  # a comment does not separate a label from its barline
         if _NOREP_EXPANSION.match(token):
             continue  # the no-repeat performance option, not the written order
         match = _EXPANSION.match(token)
@@ -70,27 +85,47 @@ def parse_notated_sections(source_text: str) -> tuple[list[str], list[NotatedSec
             continue
         match = _SECTION_LABEL.match(token)
         if match:
-            current = match.group(1)
-            if current not in order:
-                order.append(current)
+            label = match.group(1)
+            if label not in order:
+                order.append(label)
+            if label not in starts:
+                if last_barline is not None:
+                    starts[label] = last_barline
+                else:
+                    awaiting.append(label)
             continue
-        match = _BARLINE.match(token)
-        if match and current is not None:
-            bars.setdefault(current, []).append(int(match.group(1)))
+        if token.startswith("="):
+            match = _BARLINE.match(token)
+            if match:
+                number = int(match.group(1))
+                last_measure = max(last_measure, number)
+                for label in awaiting:
+                    starts.setdefault(label, number)
+                awaiting.clear()
+                last_barline = number
+            else:
+                last_barline = None  # unnumbered: the next numbered bar opens it
+            continue
+        if token.startswith("*"):
+            continue  # other interpretations do not break barline adjacency
+        last_barline = None  # a data line: any following label starts a new bar
 
     labels = set(order)
+    placed = [label for label in order if label in starts]
+    placed.sort(key=lambda label: starts[label])
+
     sections: list[NotatedSection] = []
-    for label in order:
-        if label not in bars:
-            continue  # labelled but carrying no barline of its own
+    for position, label in enumerate(placed):
+        following = placed[position + 1:]
+        end = starts[following[0]] - 1 if following else last_measure
         # "B1" is an alternate ending of "B" when a section by that name exists;
         # a bare "A2" with no "A" is just a section whose name ends in a digit.
         stem = label.rstrip("0123456789")
         is_ending = bool(stem) and stem != label and stem in labels
         sections.append(NotatedSection(
             label=label,
-            measure_start=min(bars[label]),
-            measure_end=max(bars[label]),
+            measure_start=starts[label],
+            measure_end=max(end, starts[label]),
             play_count=expansion.count(label),
             is_alternate_ending=is_ending,
             parent_label=stem if is_ending else None,

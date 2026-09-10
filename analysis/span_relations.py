@@ -11,10 +11,11 @@ alignment across unequal-length spans is deferred to v2.
 from __future__ import annotations
 from typing import Any
 
+from analysis.sections import parse_notated_sections
 from db.store import (
     extract_ordered_pitch_classes, extract_ordered_rhythm, get_measure_total_durations,
     get_max_measure_index, get_global_key, get_local_key, get_span_candidates,
-    get_tempo_markings, get_theme_repeat_open_index, load_work_features,
+    get_measure_index, get_source_text, get_tempo_markings, load_work_features,
 )
 
 RHYTHM_MATCH_TOLERANCE = 0.05  # quarter-length slack for measure-total duration comparisons
@@ -300,22 +301,50 @@ def search_for_matches(
     return results
 
 
-def detect_intro_end_index(work_id: int) -> int:
-    """Measure_index where the movement's main theme begins, excluding a
-    slow introduction, if one exists.
+# An introduction stands outside the form, so it is short: the longest in this
+# corpus is Op. 111's 18-bar Maestoso, an eighth of the movement. Op. 57's
+# finale also opens with an unrepeated section followed by a repeated one, but
+# that section is a third of the movement and is its exposition -- the
+# proportion is what separates the two cases.
+MAX_INTRO_SHARE = 0.20
 
-    Primary signal: when an introduction exists, the notated theme
-    conventionally begins exactly at the first repeat-open barline ("|:")
-    in the source — precise, since it's a literal encoded marking.
-    Fallback: a change in tempo marking (e.g. Maestoso -> Allegro con
-    brio) from the movement's opening tempo — less precise (can be a
-    measure or two off) but catches introductions that aren't followed by
-    a repeat sign. If neither signal fires, there is no detectable
-    introduction and 0 is returned.
+
+def detect_intro_end_index(work_id: int) -> int:
+    """Measure_index where the movement's main theme begins, excluding a slow
+    introduction, if one exists.
+
+    Primary signal: the notated section structure. A first section the
+    expansion record plays once, followed by one it plays twice, is an
+    introduction standing outside a repeated exposition -- provided it is short
+    (`MAX_INTRO_SHARE`), which is what distinguishes Op. 111's 18-bar Maestoso
+    from Op. 57's finale, where the unrepeated opening section *is* the
+    exposition. This is engraved rather than inferred, so it is exact: it puts
+    the Pathetique's Allegro at bar 11 and the Waldstein's at bar 3.
+
+    Fallback, for the 42 movements notating no sections: a change in tempo
+    marking from the movement's opening one. Less precise -- it can be a
+    measure or two off -- but it catches introductions with no repeat scheme.
+
+    Returns 0 when neither signal fires, meaning no detectable introduction.
     """
-    repeat_open_index = get_theme_repeat_open_index(work_id)
-    if repeat_open_index is not None and repeat_open_index > 0:
-        return repeat_open_index
+    source = get_source_text(work_id)
+    if source:
+        expansion, sections = parse_notated_sections(source)
+        body = [s for s in sections if not s.is_alternate_ending]
+        if expansion and len(body) >= 2:
+            first, second = body[0], body[1]
+            total = max(s.measure_end for s in body) - first.measure_start + 1
+            length = first.measure_end - first.measure_start + 1
+            if (first.play_count <= 1 and second.play_count > 1
+                    and total > 0 and length / total <= MAX_INTRO_SHARE):
+                index = get_measure_index(work_id, second.measure_start)
+                if index is not None:
+                    return index
+            # The engraving describes the movement's shape and does not
+            # describe an introduction, so it is evidence there is none --
+            # stronger than the tempo guess below, which would otherwise read
+            # the Presto of Op. 57's coda as the end of a 315-bar introduction.
+            return 0
 
     markings = get_tempo_markings(work_id)
     if not markings:
@@ -325,8 +354,13 @@ def detect_intro_end_index(work_id: int) -> int:
     if opening_tempo is None:
         return 0
 
+    last_index = max(index for index, _ in markings)
     for measure_index, tempo in markings:
         if tempo is not None and tempo != opening_tempo:
+            # A tempo change late in a movement is a coda or a trio, not an
+            # introduction; only one near the opening can end one.
+            if last_index and measure_index / last_index > MAX_INTRO_SHARE:
+                return 0
             return measure_index
     return 0
 

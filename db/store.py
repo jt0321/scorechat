@@ -10,6 +10,7 @@ import re
 from fractions import Fraction
 from pathlib import Path
 from sqlalchemy import text
+from sqlalchemy.orm import aliased
 from db.models import (
     Work, ScoreAsset, ScoreSegment, TextSource, ScoreSource, ScoreMeasure,
     MeasureAnalysis, AnalysisRun, SpanAnalysis, SpanRelation,
@@ -270,6 +271,19 @@ def get_max_measure_index(work_id: int) -> int | None:
         return session.query(ScoreMeasure.measure_index).filter_by(work_id=work_id).order_by(
             ScoreMeasure.measure_index.desc()
         ).limit(1).scalar()
+
+
+def get_measure_index(work_id: int, measure_number: int) -> int | None:
+    """measure_index of a printed bar number, or None if the score has no such
+    bar. Unnumbered measures all carry 0, so the first match wins."""
+    with session_scope() as session:
+        return (
+            session.query(ScoreMeasure.measure_index)
+            .filter_by(work_id=work_id, measure_number=measure_number)
+            .order_by(ScoreMeasure.measure_index)
+            .limit(1)
+            .scalar()
+        )
 
 
 def get_global_key(work_id: int, measure_index: int) -> str | None:
@@ -558,6 +572,40 @@ def get_span_candidates(work_id: int) -> list[dict]:
             "measure_end": span.measure_end,
             "span_type": span.span_type,
         } for span in spans]
+
+
+def get_span_relations(work_id: int) -> list[dict]:
+    """Stored relations for one work, in printed bar numbers.
+
+    Relations are keyed internally by measure_index; readers -- the evaluation
+    harness, and eventually the chat layer -- need the printed numbers a user
+    would type, so both are returned side by side.
+    """
+    with session_scope() as session:
+        source_span = aliased(SpanAnalysis)
+        target_span = aliased(SpanAnalysis)
+        rows = (
+            session.query(SpanRelation, source_span, target_span)
+            .join(source_span, SpanRelation.source_span_id == source_span.id)
+            .join(target_span, SpanRelation.target_span_id == target_span.id)
+            .filter(source_span.work_id == work_id)
+            .order_by(SpanRelation.confidence.desc())
+            .all()
+        )
+        return [{
+            "relation_type": relation.relation_type,
+            "confidence": float(relation.confidence),
+            "status": relation.status,
+            "source_start_index": source.measure_start_index,
+            "source_end_index": source.measure_end_index,
+            "source_start": source.measure_start,
+            "source_end": source.measure_end,
+            "target_start_index": target.measure_start_index,
+            "target_end_index": target.measure_end_index,
+            "target_start": target.measure_start,
+            "target_end": target.measure_end,
+            "evidence": relation.evidence_data or {},
+        } for relation, source, target in rows]
 
 
 def store_span_relations(
