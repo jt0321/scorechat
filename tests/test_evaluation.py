@@ -100,10 +100,11 @@ def test_finding_nothing_is_correct_when_nothing_returns():
 
 # --- citability -------------------------------------------------------------
 
-def test_one_unnumbered_measure_is_allowed_only_for_an_anacrusis():
-    assert score_citability(zero_numbered=1, anacrusis=True).passed
-    assert not score_citability(zero_numbered=1, anacrusis=False).passed
-    assert not score_citability(zero_numbered=2, anacrusis=True).passed
+def test_a_non_bar_is_citable_when_it_resolves_to_a_bar():
+    """Having no number of its own is normal for an anacrusis or an upbeat.
+    Having no bar to be reported against is what makes a range uncitable."""
+    assert score_citability(unnumbered=0, non_bars=3).passed
+    assert not score_citability(unnumbered=1, non_bars=3).passed
 
 
 def test_summary_counts_passes_per_metric():

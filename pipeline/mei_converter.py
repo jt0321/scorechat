@@ -65,14 +65,16 @@ def measure_ordinals(mei_str: str) -> dict[int, int]:
     Built from the document itself rather than assumed, because a score's
     printed numbering need not be contiguous (pickups, repeated bar numbers,
     editorial renumbering) and the MEI is the authority for what Verovio will
-    count.  An unnumbered pickup is reachable as measure 0, matching how
-    music21 and `score_measures.measure_number` denote it.
+    count.
+
+    Measures the engraving does not number carry no `@n` and so appear in no
+    entry of their own -- they are unreachable by number because they have
+    none. `pickup_ordinals` below is how a range still renders them.
     """
     ordinals: dict[int, int] = {}
     for position, attributes in enumerate(_MEI_MEASURE.findall(mei_str), start=1):
         match = _MEI_MEASURE_NUMBER.search(attributes)
         if match is None:
-            ordinals.setdefault(0, position)  # unnumbered anacrusis
             continue
         try:
             number = int(match.group(1))
@@ -80,6 +82,33 @@ def measure_ordinals(mei_str: str) -> dict[int, int]:
             continue
         ordinals.setdefault(number, position)
     return ordinals
+
+
+def pickup_ordinals(mei_str: str) -> dict[int, int]:
+    """Map printed measure number -> ordinal of the unnumbered measure(s)
+    immediately before it.
+
+    A bar preceded by an unnumbered measure is a bar with a pickup: the
+    movement's anacrusis, or the upbeat written after a repeat barline. Asking
+    for mm. 229-247 means the music a performer would start playing, which
+    begins on that upbeat -- so rendering starts there, matching how the range
+    is cited ("from the upbeat to m. 229") and how `get_measure_evidence`
+    selects the same range from the database.
+    """
+    pickups: dict[int, int] = {}
+    run_start: int | None = None
+    for position, attributes in enumerate(_MEI_MEASURE.findall(mei_str), start=1):
+        match = _MEI_MEASURE_NUMBER.search(attributes)
+        if match is None:
+            run_start = position if run_start is None else run_start
+            continue
+        if run_start is not None:
+            try:
+                pickups.setdefault(int(match.group(1)), run_start)
+            except ValueError:
+                pass
+            run_start = None
+    return pickups
 
 
 def mei_to_svg(mei_path: str, measure_start: int = 1, measure_end: int = 4) -> str:
@@ -109,6 +138,9 @@ def mei_to_svg(mei_path: str, measure_start: int = 1, measure_end: int = 4) -> s
         end = end or ordinals[min(known, key=lambda n: abs(n - measure_end))]
     if end < start:
         start, end = end, start
+
+    # Back up over a pickup so the excerpt begins where a performer would.
+    start = min(start, pickup_ordinals(mei_str).get(measure_start, start))
 
     tk = verovio.toolkit()
     tk.setOptions({"inputFrom": "mei", "adjustPageHeight": True,

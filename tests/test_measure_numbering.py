@@ -12,7 +12,7 @@ silent when wrong: the viewer simply shows the neighbouring bars.
 import pytest
 from pathlib import Path
 
-from pipeline.mei_converter import measure_ordinals
+from pipeline.mei_converter import measure_ordinals, pickup_ordinals
 
 
 ANACRUSIS_MEI = Path("data/mei/sonata01-1.mei")   # Op. 2 No. 1/i, upbeat
@@ -27,9 +27,18 @@ def _read(path: Path) -> str:
 
 def test_anacrusis_shifts_printed_numbers_by_one():
     ordinals = measure_ordinals(_read(ANACRUSIS_MEI))
-    assert ordinals[0] == 1   # the unnumbered pickup is ordinal 1
+    assert 0 not in ordinals  # the pickup has no number, so no entry of its own
     assert ordinals[1] == 2   # printed bar 1 is the *second* physical measure
     assert ordinals[5] == 6
+
+
+def test_the_pickup_is_reached_through_the_bar_it_belongs_to():
+    """An unnumbered measure cannot be addressed by number because it has
+    none. It is reachable as the pickup of the bar it leads into, which is how
+    a musician refers to it and how the database now stores it."""
+    pickups = pickup_ordinals(_read(ANACRUSIS_MEI))
+    assert pickups[1] == 1    # the anacrusis sits at ordinal 1, before bar 1
+    assert 5 not in pickups   # bar 5 has no pickup of its own
 
 
 def test_score_without_anacrusis_is_unshifted():
@@ -39,10 +48,18 @@ def test_score_without_anacrusis_is_unshifted():
     assert ordinals[5] == 5
 
 
-def test_unnumbered_measure_is_addressable_as_zero():
-    """music21 and score_measures.measure_number both denote an unnumbered
-    measure as 0; the renderer must use the same denotation."""
-    assert measure_ordinals('<measure><x/></measure><measure n="1"></measure>') == {0: 1, 1: 2}
+def test_an_unnumbered_measure_gets_no_entry_of_its_own():
+    """0 used to denote "unnumbered" here and in score_measures. It also read
+    as a bar number and was printed as one, so a range opening on a pickup was
+    cited as "mm. 0-247". Nothing is addressable as 0 any more."""
+    mei = '<measure><x/></measure><measure n="1"></measure>'
+    assert measure_ordinals(mei) == {1: 2}
+    assert pickup_ordinals(mei) == {1: 1}
+
+
+def test_a_pickup_run_is_reported_from_its_first_measure():
+    mei = '<measure n="1"></measure><measure><x/></measure><measure><x/></measure><measure n="2"></measure>'
+    assert pickup_ordinals(mei) == {2: 2}
 
 
 def test_ordinals_ignore_unparsable_numbers_without_shifting_the_rest():
@@ -68,7 +85,11 @@ def test_rendered_excerpt_matches_the_printed_bar_in_the_source(printed, expecte
         pytest.skip("MEI has not been generated")
     svg = mei_to_svg(str(ANACRUSIS_MEI), printed, printed)
     assert f"measure-L{expected_source_line}" in svg
-    assert len(re.findall(r'id="measure-L\d+"', svg)) == 1
+    # Bar 1 is preceded by the anacrusis, and a request for bar 1 renders it
+    # too: that is where a performer starts playing, and it is what
+    # get_measure_evidence returns for the same range.
+    expected = 2 if printed == 1 else 1
+    assert len(re.findall(r'id="measure-L\d+"', svg)) == expected
 
 
 def test_excerpt_renders_only_the_requested_measures():

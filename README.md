@@ -109,12 +109,11 @@ proposed at all) is scored apart from `return` (was it ranked first), because
 locating a passage and ranking it are different jobs and nothing yet does the
 second.
 
-Current result, at a tolerance of four bars: **44/50**, with `home_key` and
-`exposition_start` at 10/10, `return_recall` at 9/10, `return` at 8/10, and
-`citable` at 7/10. The `citable` failures are the most consequential: 87
-measures across the corpus carry no printed number, and in Op. 2 No. 2/i that
-turns a correctly identified recapitulation (`repeats 0.861, mm. 1–19 →
-mm. 229–247`) into an uncitable one reported as mm. 0–247.
+Current result, at a tolerance of four bars: **49/50** — `home_key`,
+`exposition_start`, `return_recall` and `citable` all 10/10, `return` 9/10.
+The single failure is a ranking problem rather than an analysis one: the
+Pathétique's return at m. 197 is proposed, but a coda return at m. 301 outranks
+it, and nothing yet does the ranking.
 
 Span analyses and relations have a review lifecycle: `proposed`, `accepted`,
 or `rejected`. The current pipeline creates only `proposed` analytical claims;

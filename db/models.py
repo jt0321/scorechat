@@ -84,7 +84,9 @@ class ScoreMeasure(Base):
     id              = Column(Integer, primary_key=True)
     work_id         = Column(Integer, ForeignKey("works.id", ondelete="CASCADE"), nullable=False)
     measure_index   = Column(Integer, nullable=False)
-    measure_number  = Column(Integer, nullable=False)
+    measure_number  = Column(Integer)          # NULL when the measure is not a bar
+    measure_role    = Column(Text, nullable=False, default="bar")
+    measure_belongs_to = Column(Integer)       # printed bar a non-bar is reported against
     symbolic_data   = Column(JSONB, nullable=False)
     created_at      = Column(TIMESTAMP(timezone=True), server_default=func.now())
 

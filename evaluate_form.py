@@ -41,8 +41,10 @@ def _resolve(works: list[dict], opus: str, movement: int) -> dict | None:
 
 def evaluate_movement(work: dict, entry: dict, tolerance: int) -> list[Outcome]:
     measures = load_work_features(work["id"])
-    numbers = [m["measure_number"] for m in measures]
-    indices = {m["measure_index"]: m["measure_number"] for m in measures}
+    numbers = [m["measure_belongs_to"] for m in measures]
+    indices = {m["measure_index"]: m["measure_belongs_to"] for m in measures}
+    non_bars = [m for m in measures if m["measure_role"] != "bar"]
+    unnumbered = [m for m in non_bars if m["measure_belongs_to"] is None]
 
     intro_end = detect_intro_end_index(work["id"])
     observed_start = indices.get(intro_end)
@@ -58,7 +60,7 @@ def evaluate_movement(work: dict, entry: dict, tolerance: int) -> list[Outcome]:
         score_exposition_start(entry["exposition_start"], observed_start, tolerance),
         score_return_recall(entry["literal_return"], candidates, tolerance),
         score_return(entry["literal_return"], best_return_bar(candidates), tolerance),
-        score_citability(sum(1 for n in numbers if n == 0), anacrusis=numbers[:1] == [0]),
+        score_citability(len(unnumbered), len(non_bars)),
     ]
 
 

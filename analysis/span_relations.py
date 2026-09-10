@@ -58,8 +58,24 @@ class WorkFeatures:
         return measure["local_key"] if measure else None
 
     def measure_number(self, measure_index: int) -> int | None:
+        """The printed bar, or None when this measure is not a bar."""
         measure = self._by_index.get(measure_index)
         return measure["measure_number"] if measure else None
+
+    def bar_of(self, measure_index: int) -> int | None:
+        """The printed bar this measure is *reported* against.
+
+        For a bar that is its own number; for a pickup it is the bar the
+        pickup leads into. Every range shown to a reader resolves through
+        here, so a span opening on the upbeat into the recapitulation is cited
+        as m. 229 rather than as the unnumbered measure it literally starts on.
+        """
+        measure = self._by_index.get(measure_index)
+        return measure["measure_belongs_to"] if measure else None
+
+    def opens_on_pickup(self, measure_index: int) -> bool:
+        measure = self._by_index.get(measure_index)
+        return bool(measure) and measure["measure_role"] in ("anacrusis", "upbeat")
 
 
 def _pitch_classes(span: dict, features: WorkFeatures | None) -> list[int]:
@@ -431,16 +447,19 @@ def _reference_spans(
     references: dict[tuple[int, int], dict] = {}
 
     def offer(start: int, end: int) -> None:
-        if (start, end) in references or features.measure_number(start) is None:
+        # Resolved bars, not strict ones: a span may legitimately open on the
+        # upbeat into a bar, and rejecting those would drop the recapitulation
+        # of any movement whose repeat is written with a pickup.
+        if (start, end) in references or features.bar_of(start) is None:
             return
-        if end - start + 1 < min_measures or features.measure_number(end) is None:
+        if end - start + 1 < min_measures or features.bar_of(end) is None:
             return
         if len(features.pitch_classes(start, end)) < min_events:
             return
         references[(start, end)] = {
             "measure_start_index": start, "measure_end_index": end,
-            "measure_start": features.measure_number(start),
-            "measure_end": features.measure_number(end),
+            "measure_start": features.bar_of(start),
+            "measure_end": features.bar_of(end),
         }
 
     for span in spans:
@@ -594,8 +613,8 @@ def build_span_relations(
                 "source_end": span["measure_end"],
                 "target_start_index": match["measure_start_index"],
                 "target_end_index": match["measure_end_index"],
-                "target_start": features.measure_number(match["measure_start_index"]),
-                "target_end": features.measure_number(match["measure_end_index"]),
+                "target_start": features.bar_of(match["measure_start_index"]),
+                "target_end": features.bar_of(match["measure_end_index"]),
                 "evidence": {
                     "analysis_version": RELATION_ANALYSIS_VERSION,
                     "repeats_confidence": round(repeats, 4),
@@ -609,6 +628,13 @@ def build_span_relations(
                     # restatement. Downstream form analysis needs to tell those
                     # apart, so the raw fact is kept separate from the score.
                     "returns_in_same_key": same_key,
+                    # A range may open on the upbeat into its first bar, which
+                    # is how a repeat's material begins. The bars above already
+                    # resolve to that bar; this says the excerpt starts before
+                    # the downbeat, so a reader is told "from the upbeat to
+                    # m. 229" rather than being quietly given an extra measure.
+                    "source_opens_on_pickup": features.opens_on_pickup(span["measure_start_index"]),
+                    "target_opens_on_pickup": features.opens_on_pickup(match["measure_start_index"]),
                     "transposed_semitones": interval,
                     "transposition_consistency": round(consistency, 4),
                     "source_local_key": features.local_key(span["measure_start_index"]),

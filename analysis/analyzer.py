@@ -14,6 +14,7 @@ import music21
 from music21 import converter, analysis, key as key_module, meter, stream, roman
 
 from analysis.harmony import HARMONY_ANALYSIS_VERSION, analyze_harmony
+from analysis.numbering import BAR, assign_roles
 
 
 # A Humdrum key signature (`*k[b-e-a-d-]`) and meter (`*M2/4`) are notated
@@ -129,15 +130,17 @@ class MeasureChunk:
 class CanonicalMeasure:
     """JSON-safe, queryable notation facts for one measure across all parts."""
     measure_index: int
-    measure_number: int
+    measure_number: int | None   # None when the measure is not a bar
     symbolic_data: dict[str, Any]
+    measure_role: str = "bar"
+    measure_belongs_to: int | None = None
 
 
 @dataclass
 class PerMeasureAnalysis:
     """Versioned facts deterministically derived from a CanonicalMeasure."""
     measure_index: int
-    measure_number: int
+    measure_number: int | None
     analysis_data: dict[str, Any]
 
 
@@ -317,6 +320,9 @@ def build_symbolic_layers(score_path: str) -> tuple[list[CanonicalMeasure], list
     primary_measures = part_measures[0]
     canonical_measures: list[CanonicalMeasure] = []
     measure_analyses: list[PerMeasureAnalysis] = []
+    # (index, importer's number, sounding duration, the meter's bar length) --
+    # what `assign_roles` needs to tell a bar from a pickup after the loop.
+    measure_shapes: list[tuple[int, int | None, float, float | None]] = []
 
     for measure_index, primary_measure in enumerate(primary_measures):
         measure_number = primary_measure.number
@@ -339,6 +345,12 @@ def build_symbolic_layers(score_path: str) -> tuple[list[CanonicalMeasure], list
                 encoded_parts[0]["key_signature_sharps"] = source_sharps
             if all(part["time_signature"] is None for part in encoded_parts):
                 encoded_parts[0]["time_signature"] = source_time_signature
+        measure_shapes.append((
+            measure_index,
+            measure_number or None,
+            float(max((m.duration.quarterLength for m in notated_measures), default=0)),
+            float(primary_measure.barDuration.quarterLength),
+        ))
         canonical_measures.append(CanonicalMeasure(
             measure_index,
             measure_number,
@@ -382,6 +394,21 @@ def build_symbolic_layers(score_path: str) -> tuple[list[CanonicalMeasure], list
                 "texture_scope": "primary_part_measure",
             },
         ))
+
+    # A measure the importer did not number is not a parse failure: an
+    # anacrusis, the pickup written after a repeat barline, and an unbarred
+    # cadenza are all part of the score and none of them is a bar. Storing that
+    # refusal as 0 made it printable as a bar number, so it is resolved here
+    # into a NULL number plus a role and the bar it is reported against.
+    for numbering, canonical, analysis_item in zip(
+        assign_roles(measure_shapes), canonical_measures, measure_analyses
+    ):
+        canonical.measure_number = numbering.measure_number
+        canonical.measure_role = numbering.role
+        canonical.measure_belongs_to = numbering.belongs_to
+        canonical.symbolic_data["measure_number"] = numbering.measure_number
+        canonical.symbolic_data["measure_role"] = numbering.role
+        analysis_item.measure_number = numbering.measure_number
 
     # Harmony is a second pass over the finished canonical layer rather than
     # per-measure work inside the loop: key estimation needs a window of

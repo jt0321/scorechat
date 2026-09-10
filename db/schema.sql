@@ -53,7 +53,14 @@ CREATE TABLE score_measures (
     id             SERIAL PRIMARY KEY,
     work_id        INT NOT NULL REFERENCES works(id) ON DELETE CASCADE,
     measure_index  INT NOT NULL,
-    measure_number INT NOT NULL,
+    -- NULL when the measure is not a bar: an anacrusis, the upbeat written
+    -- after a repeat barline, an unbarred passage. measure_role says which,
+    -- and measure_belongs_to the printed bar it is reported against.
+    measure_number INT,
+    measure_role   TEXT NOT NULL DEFAULT 'bar'
+                   CHECK (measure_role IN ('bar','anacrusis','upbeat','unbarred','empty')),
+    measure_belongs_to INT,
+    CHECK ((measure_role = 'bar') = (measure_number IS NOT NULL)),
     symbolic_data  JSONB NOT NULL,
     created_at     TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE (work_id, measure_index)

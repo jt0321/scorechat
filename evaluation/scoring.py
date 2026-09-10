@@ -115,18 +115,18 @@ def score_return(
                    f"off by {observed - expected:+d}")
 
 
-def score_citability(zero_numbered: int, anacrusis: bool) -> Outcome:
-    """Every measure the pipeline may cite needs a printed number.
+def score_citability(unnumbered: int, non_bars: int) -> Outcome:
+    """Can every measure the pipeline may cite be named?
 
-    An anacrusis is legitimately unnumbered -- a performer does not call it a
-    bar either -- so one is allowed. Any further unnumbered measure is a bar of
-    real music the pipeline can locate but cannot name, which turns a correct
-    finding into an uncitable one.
+    A measure with no printed number is fine — an anacrusis, the upbeat after a
+    repeat barline and an unbarred cadenza are all part of the score without
+    being bars, and a performer does not name them either. What is not fine is
+    such a measure having no bar to be *reported against*, because then a range
+    opening on it cannot be cited at all. That is what this counts.
     """
-    allowed = 1 if anacrusis else 0
-    surplus = max(0, zero_numbered - allowed)
-    return Outcome("citable", surplus == 0, 0, surplus,
-                   "" if surplus == 0 else f"{surplus} unnumbered measures")
+    return Outcome("citable", unnumbered == 0, 0, unnumbered,
+                   "" if unnumbered == 0 else
+                   f"{unnumbered} of {non_bars} non-bars resolve to no printed bar")
 
 
 def summarise(outcomes: Iterable[Outcome]) -> dict[str, tuple[int, int]]:

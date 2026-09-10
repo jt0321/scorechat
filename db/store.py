@@ -89,6 +89,8 @@ def store_symbolic_layers(
                 work_id=work_id,
                 measure_index=encoded_measure.measure_index,
                 measure_number=encoded_measure.measure_number,
+                measure_role=encoded_measure.measure_role,
+                measure_belongs_to=encoded_measure.measure_belongs_to,
                 symbolic_data=encoded_measure.symbolic_data,
             )
             session.add(measure)
@@ -144,15 +146,14 @@ def get_measure_evidence(work_id: int, measure_start: int, measure_end: int) -> 
             .outerjoin(MeasureAnalysis, MeasureAnalysis.measure_id == ScoreMeasure.id)
             .filter(
                 ScoreMeasure.work_id == work_id,
-                # measure_number is printed/engraved numbering: the numbers a
-                # performer reads off the page and the LLM cites back. Bar 1 is
-                # the first *complete* measure; an anacrusis is not counted and
-                # is stored as 0, as is any measure music21 could not number.
-                # That makes this the right key for a user-facing lookup, but a
-                # range whose bounds include 0 can match several unrelated
-                # measures -- internal span work keys on measure_index instead.
-                ScoreMeasure.measure_number >= measure_start,
-                ScoreMeasure.measure_number <= measure_end,
+                # Selected on measure_belongs_to, not measure_number. Both
+                # carry printed numbering -- the numbers a performer reads and
+                # the LLM cites -- but a bar's pickup has no number of its own
+                # while belonging to that bar, and asking for mm. 229-247 must
+                # return the upbeat into 229 along with it. For a bar the two
+                # columns agree, so this only ever adds the non-bars.
+                ScoreMeasure.measure_belongs_to >= measure_start,
+                ScoreMeasure.measure_belongs_to <= measure_end,
             )
             .order_by(
                 ScoreMeasure.measure_index,
@@ -173,6 +174,8 @@ def get_measure_evidence(work_id: int, measure_start: int, measure_end: int) -> 
                 evidence_by_measure[measure.id] = {
                     "measure_index": measure.measure_index,
                     "measure_number": measure.measure_number,
+                    "measure_role": measure.measure_role,
+                    "measure_belongs_to": measure.measure_belongs_to,
                     "notation": measure.symbolic_data,
                     "analysis": measure_analysis.analysis_data if measure_analysis else None,
                 }
@@ -537,12 +540,91 @@ def load_work_features(work_id: int, part_index: int = 0) -> list[dict]:
             features.append({
                 "measure_index": measure.measure_index,
                 "measure_number": measure.measure_number,
+                "measure_role": measure.measure_role,
+                "measure_belongs_to": measure.measure_belongs_to,
                 "pitch_classes": pitch_classes,
                 "rhythm": rhythm,
                 "total_duration": sum(rhythm),
                 "local_key": (analysis_data or {}).get("local_key"),
             })
         return features
+
+
+def get_measure_shapes(work_id: int) -> list[tuple[int, int | None, float, float | None]]:
+    """`(measure_index, printed number, sounding duration, bar length)` per
+    measure -- what `analysis.numbering.assign_roles` needs, read back from the
+    database so numbering can be re-derived without re-parsing the .krn.
+
+    The meter is stored only where it changes, so it is forward-filled here the
+    way the harmony pass forward-fills key signatures.
+    """
+    shapes: list[tuple[int, int | None, float, float | None]] = []
+    bar_duration: float | None = None
+    with session_scope() as session:
+        rows = (
+            session.query(ScoreMeasure, MeasureAnalysis)
+            .outerjoin(MeasureAnalysis, MeasureAnalysis.measure_id == ScoreMeasure.id)
+            .filter(ScoreMeasure.work_id == work_id)
+            .order_by(ScoreMeasure.measure_index, MeasureAnalysis.id.desc())
+            .all()
+        )
+        seen: set[int] = set()
+        for measure, analysis in rows:
+            if measure.measure_index in seen:
+                continue
+            seen.add(measure.measure_index)
+            signature = (analysis.analysis_data or {}).get("time_signature") if analysis else None
+            if signature:
+                bar_duration = _bar_duration(signature) or bar_duration
+            duration = 0.0
+            for part in measure.symbolic_data.get("parts", []):
+                part_duration = sum(
+                    _parse_quarter_length(event["duration"]["quarter_length"])
+                    for event in part.get("events", [])
+                )
+                duration = max(duration, part_duration)
+            shapes.append((measure.measure_index, measure.measure_number or None,
+                           duration, bar_duration))
+    return shapes
+
+
+def _bar_duration(time_signature: str) -> float | None:
+    """Quarter-note length of one bar in a "6/8"-style signature."""
+    try:
+        beats, unit = time_signature.split("/")
+        return int(beats) * 4.0 / int(unit)
+    except (ValueError, ZeroDivisionError):
+        return None
+
+
+def store_measure_roles(work_id: int, numbering: list) -> int:
+    """Apply a numbering pass to a work's stored measures.
+
+    Rewrites `measure_number`, `measure_role` and `measure_belongs_to` only --
+    the canonical notation itself is untouched, so this repairs an existing
+    corpus without re-ingesting it.
+    """
+    updated = 0
+    with session_scope() as session:
+        by_index = {
+            measure.measure_index: measure
+            for measure in session.query(ScoreMeasure).filter_by(work_id=work_id).all()
+        }
+        for row in numbering:
+            measure = by_index.get(row.measure_index)
+            if measure is None:
+                continue
+            measure.measure_number = row.measure_number
+            measure.measure_role = row.role
+            measure.measure_belongs_to = row.belongs_to
+            measure.symbolic_data = {
+                **measure.symbolic_data,
+                "measure_number": row.measure_number,
+                "measure_role": row.role,
+            }
+            updated += 1
+        session.commit()
+    return updated
 
 
 def get_span_candidates(work_id: int) -> list[dict]:
