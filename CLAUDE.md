@@ -69,10 +69,21 @@ Key modules:
 - `scorechat_app.py` — alternate Streamlit-based chat client.
 
 Measure numbering — two numbering schemes exist and confusing them fails silently (the viewer just shows neighbouring bars):
-- **Printed/engraved** (`score_measures.measure_number`) — what a performer reads, what a user types, and what the LLM must cite. Bar 1 is the first *complete* measure; an anacrusis is not counted and is stored as `0`, as is any measure music21 could not number (so `0` is not unique — never use it as a range bound).
+- **Printed/engraved** (`score_measures.measure_number`) — what a performer reads, what a user types, and what the LLM must cite. Bar 1 is the first *complete* measure. Anything a performer would not call a bar — an anacrusis, the upbeat written after a repeat barline, an unbarred cadenza — is stored as `0`, so `0` is emphatically not unique and must never be used as a range bound. See the defect note below: those are not parse failures, they are real music with no bar number of its own.
 - **Internal** (`score_measures.measure_index`) — 0-based position including unnumbered measures. All span/relation work (`span_analyses.measure_start_index`, `analysis/span_relations.py`) keys on this.
 
-  **Known defect, measured by `evaluate_form.py`'s `citable` metric:** 87 measures across 31 movements are unnumbered beyond the one legitimate anacrusis. They are fragments music21 splits off at an unnumbered structural barline (`=!|:`, `=||`) or, in Op. 2 No. 3/i, a deliberately unbarred cadenza (`=-`). This is not cosmetic: the pipeline correctly identifies Op. 2 No. 2/i's recapitulation as `repeats 0.861, mm. 1–19 → mm. 229–247`, but the target's first measure is unnumbered, so it reports the range as **mm. 0–247** — a correct finding rendered uncitable. Repairing the numbering from the source `=N` barlines is the open task; note that these fragments are genuinely ambiguous (the Op. 2 No. 2 one is an upbeat to the recapitulation, mirroring the movement's opening anacrusis), so it is a convention decision, not just a parse fix.
+  **Known defect, measured by `evaluate_form.py`'s `citable` metric.** 134 rows carry `measure_number = 0`, and they are four different things:
+
+  | count | what it is | duration |
+  |---|---|---|
+  | 47 | opening anacrusis | partial, at `measure_index` 0 |
+  | 45 | upbeat into a repeat or second ending | partial, and exactly completes the short bar before it |
+  | 33 | unbarred passage (`=-`, e.g. Op. 2 No. 3/i's cadenza) | arbitrary, often longer than a bar |
+  | 9 | artefact at a final barline | zero — no music at all |
+
+  Only the last is junk. The other 125 are real sounding music that a performer genuinely does *not* call a bar, so music21 is right to decline to number them: in Op. 2 No. 2/i, bar 228 is written short (1.5 of 2.0 beats) and the missing 0.5 is the eighth-note upbeat into the recapitulation, notated after the barline exactly as the movement's own opening anacrusis is. It is "the pickup to bar 229", not a bar.
+
+  The defect is ours: the schema has no way to say *part of the score but not a bar of its own*, so `0` does duty as anacrusis, as upbeat, as unbarred passage — and then gets printed as a range bound. The pipeline identifies Op. 2 No. 2/i's recapitulation correctly as `repeats 0.861, mm. 1–19 → mm. 229–247`, but the target range opens on that upbeat, so it reports **mm. 0–247**. The fix is a numbering *contract*, not a parse repair: `measure_number` should be NULL for anything that is not a bar, with a separate role saying which of the four it is, and a range that opens on a non-bar should be reported as the bar it belongs to.
 
 Verovio agrees with printed numbering in its MEI (`@n` absent on a pickup), but its `select({"measureRange": ...})` counts **ordinal positions from 1**, in which the pickup *is* position 1 — so printed bar N is ordinal N+1 wherever an anacrusis exists. Translate via `measure_ordinals()` (Python) or `measureInfo()` (`frontend/score_viewer.html`); `frontend/index.html` sidesteps it by resolving `@n` to `xml:id` and navigating with `getPageWithElement`. Note the older `select` *option* is silently unsupported in Verovio 6 and renders the whole movement — use the `select()` **method**, with a dict, before `loadData`.
 
