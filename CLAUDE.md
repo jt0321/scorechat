@@ -36,6 +36,12 @@ python renumber_measures.py                              # re-derive which measu
 python evaluate_form.py --verbose                        # score the pipeline against known answers
 ```
 
+Ask a question (tool-calling; needs `CHAT_PROVIDER` and its key):
+```bash
+python ask.py "where is the recapitulation in the Moonlight finale, and what supports it?"
+python ask.py "compare mm. 1-8 with mm. 103-110 of op 27 no 2 iii" --no-trace
+```
+
 Run the app:
 ```bash
 python server.py                    # API + static HTML/JS client at http://localhost:8000
@@ -65,6 +71,8 @@ Key modules:
 - `pipeline/retrieval.py` — pgvector cosine similarity search over `score_segments`/text sources.
 - `pipeline/embedder.py` — embedding generation via the configured `EMBEDDING_PROVIDER`.
 - `pipeline/providers.py` — env-driven selection of chat/embedding backends (`CHAT_PROVIDER`/`EMBEDDING_PROVIDER`: openai/anthropic/ollama/gemini) via LangChain, so no code is hardcoded to OpenAI. Anthropic has no embeddings API. Switching `EMBEDDING_PROVIDER` to a model with a different output dimension than the schema's `vector(1536)` columns requires a schema migration + full re-embedding.
+- `pipeline/analysis_api.py` — the questions ScoreChat can answer, as plain functions (`resolve_work`, `describe_span`, `find_recurrences`, `compare_spans`, `get_key_plan`, `locate_in_form`). Kept apart from the tool bindings so the answers are testable without a model in the loop. Two conventions hold throughout and both have tests: **printed bar numbers in and out**, with ranges resolved through `measure_belongs_to` so a range opening on a pickup still reports itself as the bar it leads into; and **absence is an answer** — a movement notating no sections, a range with no recurrences, a comparison below threshold each return an empty result with a `note` saying so, never a guess, because an empty result with no explanation is the one thing a model will fill in for itself. `resolve_work` returns `resolved: None` when several movements match equally rather than picking one, since a wrong work puts every later answer in the wrong music; an opus-and-number is matched as a unit (`Op. 27 No. 2`, not the loose tokens "27" and "2", which match Op. 27 No. 1 just as well), nicknames are matched with accents folded, and "last movement" resolves only once the field is one sonata.
+- `pipeline/tools.py` — that API bound as LangChain tools, plus the call loop (`answer()`), driven by `ask.py` and served at `/api/ask`. Tool calling rather than retrieval because neither headline question is a retrieval problem: in "describe mm. x–y" the measures are *given*, and "find recurring material" is an edge in `span_relations` that vector search over prose summaries cannot reach. The returned `trace` is the citation — a claim with no supporting call in it is one to distrust. A tool that raises returns its error to the model to recover from rather than aborting the answer, and a model that never stops calling tools is cut off after `MAX_TOOL_ITERATIONS` and asked to answer from what it has. `_text()` flattens provider content blocks; Gemini attaches a signature block to every reply, and rendering the list puts a base64 blob in front of the user.
 - `pipeline/chat.py` — RAG chain (prompt | chat model | parser). Builds LLM context from retrieved segments, capping unique measures per response (`MAX_SYMBOLIC_CONTEXT_MEASURES`) and injecting `symbolic_evidence` JSON per measure so answers are grounded and measure-cited.
 - `pipeline/mei_converter.py` — MusicXML → MEI via Verovio bindings, for exact SVG notation rendering in-browser. `mei_to_svg` takes **printed** measure numbers and translates them through `measure_ordinals()`; see the measure numbering note below.
 - `frontend/index.html`, `frontend/score_viewer.html` — HTML/JS client; renders notation slices client-side via Verovio WASM.

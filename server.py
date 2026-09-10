@@ -103,6 +103,24 @@ class ScoreChatHandler(SimpleHTTPRequestHandler):
                 self.wfile.write(json.dumps({"error": str(e)}).encode("utf-8"))
             return
 
+        # Tool-calling analysis endpoint. Kept separate from /api/chat rather
+        # than replacing it: the two answer differently -- retrieval returns
+        # segments the viewer renders, while this returns prose plus the trace
+        # of stored analysis it was built from -- and the existing client is
+        # written against the retrieval shape.
+        if parsed_url.path == "/api/ask":
+            query_params = urllib.parse.parse_qs(parsed_url.query)
+            question = query_params.get("question", [""])[0]
+            if not question:
+                self._send_json(400, {"error": "Missing question parameter"})
+                return
+            try:
+                from pipeline.tools import answer
+                self._send_json(200, answer(question))
+            except Exception as e:
+                self._send_json(500, {"error": str(e)})
+            return
+
         # Fallback to default static file serving
         return super().do_GET()
 

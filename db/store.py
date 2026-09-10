@@ -656,6 +656,33 @@ def get_span_candidates(work_id: int) -> list[dict]:
         } for span in spans]
 
 
+def get_notated_sections(work_id: int) -> list[dict]:
+    """The work's engraved section structure, newest run first.
+
+    Stored as spans with `span_type='section'` by `build_sections.py`; read
+    back here rather than re-parsing the .krn, so the chat layer sees exactly
+    what the pipeline recorded.
+    """
+    with session_scope() as session:
+        spans = (
+            session.query(SpanAnalysis)
+            .filter(SpanAnalysis.work_id == work_id, SpanAnalysis.span_type == "section")
+            .order_by(SpanAnalysis.analysis_run_id.desc(), SpanAnalysis.measure_start_index)
+            .all()
+        )
+        if not spans:
+            return []
+        latest = spans[0].analysis_run_id
+        return [{
+            "label": span.label,
+            "measure_start": span.measure_start,
+            "measure_end": span.measure_end,
+            "measure_start_index": span.measure_start_index,
+            "measure_end_index": span.measure_end_index,
+            "evidence": span.evidence_data or {},
+        } for span in spans if span.analysis_run_id == latest]
+
+
 def get_span_relations(work_id: int) -> list[dict]:
     """Stored relations for one work, in printed bar numbers.
 

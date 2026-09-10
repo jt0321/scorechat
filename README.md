@@ -81,6 +81,40 @@ musical analysis.
   in the key it was stated in — the signal that distinguishes a recapitulation
   from a transposed restatement.
 
+## Asking Questions
+
+`ask.py` answers a question by calling the analysis API, not by retrieving text:
+
+```bash
+python ask.py "where is the recapitulation in the Moonlight finale, and what supports it?"
+```
+
+```
+  → resolve_work_tool(query='Moonlight sonata third movement')
+  → get_key_plan_tool(work_id=155)
+  → locate_in_form_tool(work_id=155, measure=1)
+  → find_recurrences_tool(work_id=155, measure_start=2, measure_end=64)
+
+The recapitulation begins at m. 103. Material from mm. 1-16 returns at
+mm. 103-118 at the original pitch (0 semitones), confidence 0.868 …
+```
+
+Neither headline question is a retrieval problem. In "describe mm. x–y" the
+measures are given, so there is nothing to search for; "find recurring material"
+is an edge in `span_relations`, which a vector search over prose summaries
+cannot reach. Both are lookups, and a lookup wants a function call.
+
+The six tools are `resolve_work`, `describe_span`, `find_recurrences`,
+`compare_spans`, `get_key_plan` and `locate_in_form`, defined as plain functions
+in `pipeline/analysis_api.py` so they can be tested without a model. Every value
+they return comes from stored analysis; where the pipeline found nothing they
+return an empty result with a note saying so, rather than a value the model
+might mistake for a finding. The tool trace returned alongside the answer is the
+citation: a claim with no supporting call in it is one to distrust.
+
+Also served at `GET /api/ask?question=…`, separate from the retrieval-based
+`/api/chat` that the score viewer uses.
+
 ## Evaluation
 
 `evaluate_form.py` scores the pipeline against `evaluation/ground_truth.json`,
