@@ -11,6 +11,13 @@ score offers, being engraved rather than inferred.
 from __future__ import annotations
 import click
 
+# These CLIs read DATABASE_URL and the provider keys straight from the
+# environment, so the .env a developer already has must be loaded before any
+# db.store import builds an engine from it.
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from analysis.sections import parse_notated_sections, repeated_sections
 from db.store import get_source_text, list_works, store_notated_sections
 

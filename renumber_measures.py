@@ -11,6 +11,13 @@ ingests get the same treatment inside `build_symbolic_layers`.
 from __future__ import annotations
 import collections
 
+# These CLIs read DATABASE_URL and the provider keys straight from the
+# environment, so the .env a developer already has must be loaded before any
+# db.store import builds an engine from it.
+from dotenv import load_dotenv
+
+load_dotenv()
+
 import click
 
 from analysis.numbering import BAR, NUMBERING_VERSION, assign_roles

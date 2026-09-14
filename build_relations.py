@@ -10,6 +10,13 @@ source .krn. It can therefore be re-run and re-tuned without re-ingesting.
 from __future__ import annotations
 import click
 
+# These CLIs read DATABASE_URL and the provider keys straight from the
+# environment, so the .env a developer already has must be loaded before any
+# db.store import builds an engine from it.
+from dotenv import load_dotenv
+
+load_dotenv()
+
 from analysis.span_relations import (
     MAX_MATCHES_PER_SPAN, MIN_RELATION_CONFIDENCE, MIN_RELATION_EVENTS,
     MIN_RELATION_MEASURES, REFERENCE_WINDOW_LENGTHS, RELATION_ANALYSIS_VERSION,
