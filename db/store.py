@@ -43,14 +43,10 @@ def upsert_work(metadata: dict) -> int:
         return work.id
 
 
-def store_asset(work_id: int, asset_type: str, file_path: str,
-                page_number: int | None = None, omr_tool: str | None = None,
-                omr_quality: str = "auto") -> int:
+def store_asset(work_id: int, asset_type: str, file_path: str) -> int:
     with session_scope() as session:
         asset = ScoreAsset(
-            work_id=work_id, asset_type=asset_type,
-            file_path=str(file_path), page_number=page_number,
-            omr_tool=omr_tool, omr_quality=omr_quality
+            work_id=work_id, asset_type=asset_type, file_path=str(file_path)
         )
         session.add(asset)
         session.commit()
@@ -493,7 +489,7 @@ def clear_work_segments_and_assets(work_id: int) -> None:
         session.query(ScoreSegment).filter_by(work_id=work_id).delete()
         # Delete text sources (like wikipedia or imslp text chunks)
         session.query(TextSource).filter_by(work_id=work_id).delete()
-        # Delete all assets (PDF will be re-added by the ingestion script)
+        # Delete all assets; the ingestion script re-adds them
         session.query(ScoreAsset).filter_by(work_id=work_id).delete()
         session.commit()
 

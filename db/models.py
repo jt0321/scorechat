@@ -44,16 +44,13 @@ class Work(Base):
 class ScoreAsset(Base):
     __tablename__ = "score_assets"
     __table_args__ = (
-        CheckConstraint("asset_type IN ('pdf','page_image','musicxml','mei','midi','krn')"),
+        CheckConstraint("asset_type IN ('krn','mei')"),
     )
 
     id          = Column(Integer, primary_key=True)
     work_id     = Column(Integer, ForeignKey("works.id", ondelete="CASCADE"), nullable=False)
     asset_type  = Column(Text, nullable=False)
     file_path   = Column(Text, nullable=False)
-    page_number = Column(Integer)
-    omr_tool    = Column(Text)
-    omr_quality = Column(Text)
     created_at  = Column(TIMESTAMP(timezone=True), server_default=func.now())
 
     work = relationship("Work", back_populates="assets")

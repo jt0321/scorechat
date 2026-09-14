@@ -22,6 +22,7 @@ psql "$DATABASE_URL" -f db/migrations/001_symbolic_layers.sql
 psql "$DATABASE_URL" -f db/migrations/002_span_analysis.sql
 psql "$DATABASE_URL" -f db/migrations/003_notated_sections.sql
 psql "$DATABASE_URL" -f db/migrations/004_measure_roles.sql
+psql "$DATABASE_URL" -f db/migrations/005_drop_omr_columns.sql
 ```
 
 Ingestion pipeline:

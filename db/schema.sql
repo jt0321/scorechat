@@ -22,15 +22,12 @@ CREATE TABLE works (
     created_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Score assets: PDFs, page images, Humdrum files
+-- Score assets: the Humdrum source and the MEI rendered from it
 CREATE TABLE score_assets (
     id          SERIAL PRIMARY KEY,
     work_id     INT REFERENCES works(id) ON DELETE CASCADE,
-    asset_type  TEXT NOT NULL CHECK (asset_type IN ('pdf','page_image','musicxml','mei','midi','krn')),
+    asset_type  TEXT NOT NULL CHECK (asset_type IN ('krn','mei')),
     file_path   TEXT NOT NULL,
-    page_number INT,
-    omr_tool    TEXT,             -- e.g. "oemer", "audiveris"
-    omr_quality TEXT,             -- "auto","reviewed","manual"
     created_at  TIMESTAMPTZ DEFAULT NOW()
 );
 
