@@ -14,6 +14,7 @@ import music21
 from music21 import converter, analysis, key as key_module, meter, stream, roman
 
 from analysis.harmony import HARMONY_ANALYSIS_VERSION, analyze_harmony
+from analysis.humdrum import declared_key
 from analysis.numbering import BAR, assign_roles
 
 
@@ -413,7 +414,14 @@ def build_symbolic_layers(score_path: str) -> tuple[list[CanonicalMeasure], list
     # Harmony is a second pass over the finished canonical layer rather than
     # per-measure work inside the loop: key estimation needs a window of
     # surrounding measures, and chord fitting needs the meter carried forward.
-    trajectory, chord_spans = analyze_harmony(canonical_measures, measure_analyses)
+    # Every movement in this corpus states its key outright (`*f:`). music21
+    # discards that and estimates one statistically, which misreads six of the
+    # 103 -- usually as the relative major -- so the declaration is read from
+    # the source and used to anchor the trajectory.
+    source_key = declared_key(source_text) if source_text else None
+    trajectory, chord_spans = analyze_harmony(
+        canonical_measures, measure_analyses, declared_key=source_key
+    )
     keys_by_index = {estimate.measure_index: estimate for estimate in trajectory}
     chords_by_index: dict[int, list[dict[str, Any]]] = {}
     for span in chord_spans:
@@ -440,10 +448,11 @@ def build_symbolic_layers(score_path: str) -> tuple[list[CanonicalMeasure], list
         })
 
     # music21's whole-score Krumhansl estimate is subject to the same
-    # dominant-bias as the per-measure one (it reads Op. 13/ii as E- major);
-    # the smoothed, signature-anchored trajectory is the better answer.
-    if trajectory:
-        opening_key = trajectory[0].key
+    # dominant-bias as the per-measure one (it reads Op. 13/ii as E- major).
+    # The key the score declares beats it outright; failing that, the smoothed
+    # signature-anchored trajectory is still the better answer.
+    opening_key = source_key or (trajectory[0].key if trajectory else None)
+    if opening_key:
         for item in measure_analyses:
             item.analysis_data["global_key"] = opening_key
         global_key = opening_key

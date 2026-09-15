@@ -144,6 +144,27 @@ def _correlation(observed: list[float], profile: tuple[float, ...]) -> float:
     return numerator / denominator if denominator else 0.0
 
 
+# Enharmonic spellings the corpus writes that PITCH_NAMES does not use. A
+# score declaring "*D-:" means the same pitch class as our "C#", and the
+# declaration is the better spelling: D-flat major is what the page says.
+_SPELLINGS = {
+    "C": 0, "B#": 0, "C#": 1, "D-": 1, "D": 2, "D#": 3, "E-": 3, "E": 4,
+    "F-": 4, "E#": 5, "F": 5, "F#": 6, "G-": 6, "G": 7, "G#": 8, "A-": 8,
+    "A": 9, "A#": 10, "B-": 10, "B": 11, "C-": 11,
+}
+
+
+def parse_key_name(name: str | None) -> tuple[int, str] | None:
+    """"f minor" or "D- major" -> (pitch class, mode). None if unparsable."""
+    if not name:
+        return None
+    parts = name.split()
+    if len(parts) != 2 or parts[1] not in ("major", "minor"):
+        return None
+    tonic = _SPELLINGS.get(parts[0][0].upper() + parts[0][1:])
+    return None if tonic is None else (tonic, parts[1])
+
+
 def _key_name(tonic: int, mode: str) -> str:
     name = PITCH_NAMES[tonic % 12]
     return f"{name} major" if mode == "major" else f"{name.lower()} minor"
@@ -226,6 +247,7 @@ def estimate_key_trajectory(
     change_penalty: float = KEY_CHANGE_PENALTY,
     signature_bonus: float = SIGNATURE_BONUS,
     home_key_bonus: float = HOME_KEY_BONUS,
+    declared: tuple[int, str] | None = None,
 ) -> list[KeyEstimate]:
     """Per-measure key estimates, smoothed so a key change must earn its cost.
 
@@ -250,7 +272,10 @@ def estimate_key_trajectory(
 
     per_measure = [measure_pitch_class_weights(data) for _, data in items]
     signatures = measure_key_signatures(items)
-    home_key = detect_home_key(items, signatures)
+    # A declared key is notated evidence and outranks the cadential guess:
+    # every movement in this corpus states its key, and inferring it from the
+    # final bass misreads six of them, usually as the relative major.
+    home_key = declared if declared is not None else detect_home_key(items, signatures)
     states = [(tonic, mode) for tonic in range(12) for mode in ("major", "minor")]
 
     # Emission scores: correlation of each measure's window against each key,
@@ -630,6 +655,7 @@ def analyze_harmony(
     measures: Iterable[Any],
     analyses: Iterable[Any],
     min_confidence: float = MIN_CHORD_CONFIDENCE,
+    declared_key: str | None = None,
 ) -> tuple[list[KeyEstimate], list[ChordSpan]]:
     """Full harmonic pass: key trajectory, then chords labelled in local key.
 
@@ -639,7 +665,15 @@ def analyze_harmony(
     approach this replaces would emit a confident nonsense figure.
     """
     measures = list(measures)
-    trajectory = estimate_key_trajectory(measures)
+    declared = parse_key_name(declared_key)
+    trajectory = estimate_key_trajectory(measures, declared=declared)
+    if declared is not None and declared_key:
+        # Report the spelling the score uses. PITCH_NAMES has one name per
+        # pitch class, so an estimate agreeing with a score that writes
+        # "D- major" would otherwise be reported as "C# major".
+        for estimate in trajectory:
+            if (estimate.tonic, estimate.mode) == declared:
+                estimate.key = declared_key
     key_by_index = {estimate.measure_index: estimate for estimate in trajectory}
     time_signature_by_index = {
         (item["measure_index"] if isinstance(item, dict) else item.measure_index):

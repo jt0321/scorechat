@@ -623,6 +623,66 @@ def store_measure_roles(work_id: int, numbering: list) -> int:
     return updated
 
 
+def get_stored_measures(work_id: int) -> list[dict]:
+    """Canonical measures with their newest analysis, for a DB-only re-run.
+
+    `analysis/harmony.py` is a pure function of `symbolic_data`, so a harmonic
+    pass can be redone from here without re-parsing the source .krn. This is
+    what makes that seam usable: shape the rows the way `analyze_harmony`
+    expects them.
+    """
+    with session_scope() as session:
+        rows = (
+            session.query(ScoreMeasure, MeasureAnalysis)
+            .outerjoin(MeasureAnalysis, MeasureAnalysis.measure_id == ScoreMeasure.id)
+            .filter(ScoreMeasure.work_id == work_id)
+            .order_by(ScoreMeasure.measure_index,
+                      MeasureAnalysis.created_at.desc(), MeasureAnalysis.id.desc())
+            .all()
+        )
+        measures: list[dict] = []
+        seen: set[int] = set()
+        for measure, analysis in rows:
+            if measure.measure_index in seen:
+                continue
+            seen.add(measure.measure_index)
+            measures.append({
+                "measure_index": measure.measure_index,
+                "symbolic_data": measure.symbolic_data,
+                "analysis_id": analysis.id if analysis else None,
+                "analysis_data": dict(analysis.analysis_data) if analysis else {},
+            })
+        return measures
+
+
+def store_harmony(work_id: int, updates: dict[int, dict]) -> int:
+    """Merge harmony fields into each measure's newest analysis row.
+
+    A merge rather than a rewrite: the harmonic pass owns `global_key`,
+    `local_key*` and `chords`, and must leave the counts, directions and
+    texture the music21 pass produced alone.
+    """
+    written = 0
+    with session_scope() as session:
+        rows = (
+            session.query(ScoreMeasure.measure_index, MeasureAnalysis)
+            .join(MeasureAnalysis, MeasureAnalysis.measure_id == ScoreMeasure.id)
+            .filter(ScoreMeasure.work_id == work_id)
+            .order_by(ScoreMeasure.measure_index,
+                      MeasureAnalysis.created_at.desc(), MeasureAnalysis.id.desc())
+            .all()
+        )
+        seen: set[int] = set()
+        for measure_index, analysis in rows:
+            if measure_index in seen or measure_index not in updates:
+                continue
+            seen.add(measure_index)
+            analysis.analysis_data = {**analysis.analysis_data, **updates[measure_index]}
+            written += 1
+        session.commit()
+    return written
+
+
 def get_span_candidates(work_id: int) -> list[dict]:
     """Candidate spans from the work's most recent boundary-analysis run."""
     with session_scope() as session:
