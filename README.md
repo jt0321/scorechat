@@ -10,26 +10,20 @@ The system downloads Humdrum scores directly from the [craigsapp/beethoven-piano
 
 ## Architecture
 
-```mermaid
-graph TD
-    A[Humdrum .krn source] --> B[score_sources
-raw content, checksum, provenance]
-    A --> C[music21 parse]
-    C --> D[score_measures
-canonical measure encoding]
-    D --> E[measure_analyses
-versioned score-derived facts]
-    D --> K[harmony pass
-key trajectory + chords]
-    K --> E
-    E --> F[score_segments
-optional retrieval windows]
-    F --> G[Text embeddings + pgvector]
-    D --> H[MEI via Verovio]
-    G --> I[Retriever + LLM explanation]
-    H --> J[Notation viewer]
-    I --> J
-```
+![ScoreChat architecture: the Humdrum source read two ways, a canonical Postgres layer, four derived passes that run from the database alone, and the tool-calling answer layer](architecture.png)
+
+*Source: [`docs/architecture.svg`](docs/architecture.svg) — edit that and re-render with
+`python -c "import cairosvg; cairosvg.svg2png(url='docs/architecture.svg', write_to='architecture.png', output_width=1480, background_color='#f5f6f7')"`.*
+
+Three things the picture is making a point of. The `.krn` is read **twice**, by
+`music21` for the notes and directly by `analysis/humdrum.py` for what music21
+discards or misreads — the declared key, the `**dynam` spine, the expansion
+records that carry the repeat scheme. Every derived pass runs **from the
+database alone**, so keys, sections and relations can be re-derived and
+re-tuned in seconds without re-parsing a single file. And the model reaches the
+analysis through named functions rather than retrieval, because neither
+headline question is a retrieval problem: in "describe mm. x–y" the measures
+are given, and "find recurring material" is an edge in `span_relations`.
 
 The raw score and deterministic symbolic layers are the source of musical
 evidence. Retrieval narrows passages for a question; it does not replace the

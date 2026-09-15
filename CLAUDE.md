@@ -59,7 +59,7 @@ Some `test_analyzer.py` cases are skipped unless `tests/fixtures/sample.musicxml
 
 ## Architecture
 
-Ingestion pipeline: Humdrum `.krn` → `music21` parse → canonical measure encoding → versioned symbolic analysis → optional retrieval segments/embeddings → MEI (via Verovio) for browser rendering. See `README.md`'s Mermaid diagram and "Symbolic Score Data Model" section for the full table-by-table breakdown (`score_sources`, `score_measures`, `measure_analyses`, `analysis_runs`, `span_analyses`, `span_relations`).
+Ingestion pipeline: Humdrum `.krn` → `music21` parse → canonical measure encoding → versioned symbolic analysis → optional retrieval segments/embeddings → MEI (via Verovio) for browser rendering. See `architecture.png` (source: `docs/architecture.svg`; re-render with cairosvg after editing) and `README.md`'s "Symbolic Score Data Model" section for the full table-by-table breakdown (`score_sources`, `score_measures`, `measure_analyses`, `analysis_runs`, `span_analyses`, `span_relations`).
 
 Key modules:
 - `analysis/analyzer.py` — score loading plus all `music21`-based feature extraction: measure encoding, texture candidates, and `build_span_candidates` (span analysis at meter changes, notated directions, structural barlines — does not infer form/theme labels). Harmony is delegated to `analysis/harmony.py` as a second pass over the finished canonical layer.
