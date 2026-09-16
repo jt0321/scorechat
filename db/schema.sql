@@ -1,6 +1,3 @@
--- Enable pgvector
-CREATE EXTENSION IF NOT EXISTS vector;
-
 -- Works: one row per musical work
 CREATE TABLE works (
     id              SERIAL PRIMARY KEY,
@@ -123,56 +120,18 @@ CREATE TABLE span_relations (
     created_at      TIMESTAMPTZ DEFAULT NOW()
 );
 
--- Score segments: measure-level chunks (analogue of text paragraphs)
-CREATE TABLE score_segments (
-    id              SERIAL PRIMARY KEY,
-    work_id         INT REFERENCES works(id) ON DELETE CASCADE,
-    part            TEXT DEFAULT 'grand_staff', -- 'right_hand','left_hand','grand_staff'
-    measure_start   INT NOT NULL,
-    measure_end     INT NOT NULL,
-    local_key       TEXT,         -- e.g. "e minor"
-    roman_numerals  TEXT,         -- serialized Roman numeral analysis string
-    harmonic_rhythm TEXT,         -- e.g. "slow", "fast", "mixed"
-    texture_tag     TEXT,         -- e.g. "alberti_bass", "cantabile", "octaves"
-    formal_function TEXT,         -- e.g. "exposition", "development", "transition"
-    motif_tags      TEXT[],       -- array of motif labels
-    difficulty      INT CHECK (difficulty BETWEEN 1 AND 10),
-    summary_text    TEXT,         -- human-readable chunk summary for embedding
-    musicxml_slice  TEXT,         -- raw MusicXML fragment for this segment
-    embedding       vector(768),  -- Gemini text-embedding-004
-    created_at      TIMESTAMPTZ DEFAULT NOW()
-);
-
--- Text sources: Wikipedia, IMSLP notes, program notes, annotations
-CREATE TABLE text_sources (
-    id          SERIAL PRIMARY KEY,
-    work_id     INT REFERENCES works(id) ON DELETE CASCADE,
-    source_type TEXT NOT NULL CHECK (source_type IN ('wikipedia','imslp','program_note','annotation')),
-    content     TEXT NOT NULL,
-    chunk_index INT NOT NULL DEFAULT 0,  -- paragraph/chunk number within source
-    embedding   vector(768),
-    url         TEXT,
-    created_at  TIMESTAMPTZ DEFAULT NOW()
-);
-
 -- Indexes
-CREATE INDEX ON score_segments USING hnsw (embedding vector_cosine_ops);
-CREATE INDEX ON text_sources   USING hnsw (embedding vector_cosine_ops);
-CREATE INDEX ON score_segments (work_id, measure_start, measure_end);
 CREATE INDEX ON score_measures (work_id, measure_index);
 CREATE INDEX ON measure_analyses (measure_id);
 CREATE INDEX ON analysis_runs (work_id, created_at);
 CREATE INDEX ON span_analyses (work_id, measure_start_index, measure_end_index);
 CREATE INDEX ON span_analyses (analysis_run_id);
 CREATE INDEX ON span_relations (source_span_id, target_span_id);
-CREATE INDEX ON score_segments (local_key);
-CREATE INDEX ON score_segments (formal_function);
 CREATE INDEX ON works (composer);
 
--- Full-text metadata index (composer/title/opus/nickname/tempo) — lets
--- retrieval match a query like "the Moonlight sonata", "Op. 111", or
--- "Presto agitato" against work identity directly, independent of the
--- segment embedding vectors, which only encode harmonic/texture analysis text.
+-- Full-text metadata index (composer/title/opus/nickname/tempo) — lets a query
+-- like "the Moonlight sonata", "Op. 111" or "Presto agitato" be matched against
+-- work identity directly, which is what resolve_work does before anything else.
 CREATE INDEX works_metadata_fts_idx ON works USING gin (
     to_tsvector('english',
         coalesce(composer, '') || ' ' ||

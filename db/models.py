@@ -4,7 +4,6 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, relationship
-from pgvector.sqlalchemy import Vector
 
 
 class Base(DeclarativeBase):
@@ -32,9 +31,7 @@ class Work(Base):
     source_license  = Column(Text, default="public domain")
     created_at      = Column(TIMESTAMP(timezone=True), server_default=func.now())
 
-    segments        = relationship("ScoreSegment", back_populates="work", cascade="all, delete")
     assets          = relationship("ScoreAsset",   back_populates="work", cascade="all, delete")
-    text_sources    = relationship("TextSource",   back_populates="work", cascade="all, delete")
     sources         = relationship("ScoreSource",  back_populates="work", cascade="all, delete")
     measures        = relationship("ScoreMeasure", back_populates="work", cascade="all, delete")
     analysis_runs   = relationship("AnalysisRun",  back_populates="work", cascade="all, delete")
@@ -175,47 +172,3 @@ class SpanRelation(Base):
     analysis_run = relationship("AnalysisRun", back_populates="relations")
     source_span = relationship("SpanAnalysis", foreign_keys=[source_span_id], back_populates="outgoing_relations")
     target_span = relationship("SpanAnalysis", foreign_keys=[target_span_id], back_populates="incoming_relations")
-
-
-class ScoreSegment(Base):
-    __tablename__ = "score_segments"
-    __table_args__ = (
-        CheckConstraint("difficulty BETWEEN 1 AND 10"),
-    )
-
-    id              = Column(Integer, primary_key=True)
-    work_id         = Column(Integer, ForeignKey("works.id", ondelete="CASCADE"), nullable=False)
-    part            = Column(Text, default="grand_staff")
-    measure_start   = Column(Integer, nullable=False)
-    measure_end     = Column(Integer, nullable=False)
-    local_key       = Column(Text)
-    roman_numerals  = Column(Text)
-    harmonic_rhythm = Column(Text)
-    texture_tag     = Column(Text)
-    formal_function = Column(Text)
-    motif_tags      = Column(ARRAY(Text))
-    difficulty      = Column(Integer)
-    summary_text    = Column(Text)
-    musicxml_slice  = Column(Text)
-    embedding       = Column(Vector(768))
-    created_at      = Column(TIMESTAMP(timezone=True), server_default=func.now())
-
-    work = relationship("Work", back_populates="segments")
-
-
-class TextSource(Base):
-    __tablename__ = "text_sources"
-    __table_args__ = (
-        CheckConstraint("source_type IN ('wikipedia','imslp','program_note','annotation')"),
-    )
-
-    id          = Column(Integer, primary_key=True)
-    work_id     = Column(Integer, ForeignKey("works.id", ondelete="CASCADE"), nullable=False)
-    source_type = Column(Text, nullable=False)
-    content     = Column(Text, nullable=False)
-    chunk_index = Column(Integer, default=0)
-    embedding   = Column(Vector(768))
-    url         = Column(Text)
-    created_at  = Column(TIMESTAMP(timezone=True), server_default=func.now())
-
-    work = relationship("Work", back_populates="text_sources")

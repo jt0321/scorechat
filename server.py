@@ -17,7 +17,6 @@ from dotenv import load_dotenv
 # Load env variables before importing local modules
 load_dotenv()
 
-from pipeline.chat import chat
 from db.store import list_works, get_work_mei
 
 PORT = 8000
@@ -82,38 +81,6 @@ class ScoreChatHandler(SimpleHTTPRequestHandler):
                 self.wfile.write(body)
             except Exception as e:
                 self._send_json(500, {"error": str(e)})
-            return
-
-        # Retrieval endpoint: pgvector search over `score_segments` prose.
-        # Kept for the Streamlit client, which is still written against this
-        # shape; the HTML client now asks /api/ask instead.
-        if parsed_url.path == "/api/chat":
-            query_params = urllib.parse.parse_qs(parsed_url.query)
-            query = query_params.get("query", [""])[0]
-
-            if not query:
-                self.send_response(400)
-                self.send_header("Content-Type", "application/json")
-                self.end_headers()
-                self.wfile.write(json.dumps({"error": "Missing query parameter"}).encode("utf-8"))
-                return
-
-            try:
-                # Call RAG pipeline
-                result = chat(query)
-                response_data = json.dumps(result)
-
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json")
-                # Enable CORS
-                self.send_header("Access-Control-Allow-Origin", "*")
-                self.end_headers()
-                self.wfile.write(response_data.encode("utf-8"))
-            except Exception as e:
-                self.send_response(500)
-                self.send_header("Content-Type", "application/json")
-                self.end_headers()
-                self.wfile.write(json.dumps({"error": str(e)}).encode("utf-8"))
             return
 
         # Tool-calling analysis endpoint, and what the HTML client asks. It

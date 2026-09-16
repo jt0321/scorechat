@@ -18,12 +18,11 @@ load_dotenv()
 
 from download_beethoven_piano_sonatas import DATA_DIR
 from db.store import (
-    upsert_work, store_asset, store_segments,
-    clear_work_segments_and_assets, clear_work_symbolic_layers,
+    upsert_work, store_asset, clear_work_assets, clear_work_symbolic_layers,
     store_symbolic_layers, store_symbolic_source, store_span_candidates,
 )
 from analysis.analyzer import (
-    analyze_score, build_span_candidates, build_symbolic_layers, humdrum_measure_count,
+    build_span_candidates, build_symbolic_layers, humdrum_measure_count,
 )
 from pipeline.mei_converter import score_to_mei
 
@@ -173,11 +172,9 @@ def parse_krn_metadata(krn_path: Path) -> dict:
 
 
 @click.command()
-@click.option("--window", default=4, type=int, show_default=True,
-              help="Measures per analysis chunk")
 @click.option("--symbolic-only", is_flag=True,
-              help="Rebuild raw source, canonical measures, and measure analyses only")
-def main(window: int, symbolic_only: bool):
+              help="Rebuild the symbolic layers only, keeping the rendered MEI assets")
+def main(symbolic_only: bool):
     krns = sorted(DATA_DIR.glob("*.krn"))
     if not krns:
         click.echo(f"No Humdrum (.krn) files found in ./{DATA_DIR}/ — run download_beethoven_piano_sonatas.py first.")
@@ -213,12 +210,12 @@ def main(window: int, symbolic_only: bool):
         work_id = upsert_work(work_meta)
         click.echo(f"   Work ID: {work_id}")
 
-        # Symbolic-only rebuilding preserves already-rendered MEI assets and
-        # retrieval vectors; they are independent of this new source layer.
+        # Symbolic-only rebuilding preserves already-rendered MEI assets; they
+        # are independent of the symbolic layers rebuilt below.
         if symbolic_only:
             clear_work_symbolic_layers(work_id)
         else:
-            clear_work_segments_and_assets(work_id)
+            clear_work_assets(work_id)
 
         # Save Humdrum (.krn) as an asset during a full ingest.  The immutable
         # source row below is stored in both modes.
@@ -235,9 +232,8 @@ def main(window: int, symbolic_only: bool):
             else:
                 click.echo("   ✗ MEI generation failed.")
 
-        # Build reproducible symbolic source derivatives before optional RAG
-        # chunks.  These records support future exact symbolic search and form
-        # analysis without relying on embeddings.
+        # The canonical layer: every later pass and every answer reads these
+        # records, and nothing re-parses the source to serve a question.
         click.echo("   Encoding score and analysing measures...")
         try:
             measures, measure_analyses, _ = build_symbolic_layers(str(krn))
@@ -256,20 +252,13 @@ def main(window: int, symbolic_only: bool):
             span_candidates = build_span_candidates(measures, measure_analyses)
             store_span_candidates(work_id, span_candidates)
             click.echo(f"   ✓ {len(span_candidates)} evidence-backed span candidates stored")
-
-            if symbolic_only:
-                continue
-
-            click.echo("   Building retrieval chunks...")
-            chunks, global_key = analyze_score(str(krn), window=window)
-            click.echo(f"   ✓ {len(chunks)} chunks extracted (global key: {global_key})")
-            store_segments(work_id, chunks)
-            click.echo(f"   ✓ Done ingesting\n")
+            click.echo("   ✓ Done ingesting\n")
         except Exception as e:
             click.echo(f"   ✗ Analysis failed: {e}\n")
             continue
 
-    click.echo("All scores ingested. Run `python server.py` or `streamlit run scorechat_app.py` to start the app.")
+    click.echo("All scores ingested. Run `python build_sections.py && python build_relations.py`, "
+               "then `python server.py` to start the app.")
 
 
 if __name__ == "__main__":

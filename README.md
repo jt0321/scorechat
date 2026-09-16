@@ -71,7 +71,7 @@ flowchart TB
 ```bash
 uv venv && source .venv/bin/activate
 uv pip install -e ".[dev]"
-docker compose up -d                 # postgres + pgvector
+docker compose up -d                 # postgres
 cp .env.example .env                 # add a provider key
 
 python download_beethoven_piano_sonatas.py   # fetch .krn sources
@@ -127,29 +127,22 @@ citation** — a claim with no supporting call under it is one to distrust.
 
 ## How the model reaches the corpus
 
-**Tool calling** (`ask.py`, `GET /api/ask`, and the web client) is how an answer
-is built. `pipeline/tools.py` binds six functions from
+One path, and it is a lookup. `pipeline/tools.py` binds six functions from
 `pipeline/analysis_api.py` — `resolve_work`, `describe_span`,
 `find_recurrences`, `compare_spans`, `get_key_plan`, `locate_in_form` — which
-read stored analysis directly. **No embeddings are involved.** The client
-renders the returned trace as citation cards under the answer, and opens the
-score at the first bar range the calls named.
+read stored analysis directly; the model chooses which to call and how to
+phrase the result. `ask.py`, `GET /api/ask` and the web client all go through
+it, and the client renders the returned trace as citation cards under the
+answer, opening the score at the first bar range the calls named.
 
-**Retrieval** (`GET /api/chat`, the Streamlit app) is the older path:
-`pipeline/chat.py` → `pipeline/retrieval.py` → pgvector cosine search over
-`score_segments`. Nothing in `frontend/` uses it any more.
-
-### What is actually vectorised
-
-Only `score_segments.summary_text` — 4,519 prose summaries of measure windows,
-embedded to 1536 dimensions. **The score itself is not vectorised.** It is stored
-exactly, as JSONB in `score_measures.symbolic_data`, and queried as data.
-
-Neither headline question is a retrieval problem: in "describe mm. x–y" the
+**Nothing is embedded and nothing is retrieved by similarity.** There used to
+be a second path — 4,519 prose summaries of measure windows in a
+`score_segments` table, searched with pgvector — and it was removed, because
+neither shape of question is a retrieval problem: in "describe mm. x–y" the
 measures are *given*, so there is nothing to search for, and "find recurring
-material" is an edge in `span_relations` that a vector search over prose cannot
-reach. Now that no client depends on it, whether the vector layer stays at all
-is an open question rather than an inherited fact.
+material" is an edge in `span_relations` that a similarity search over prose
+cannot reach. The score is stored exactly, as JSONB in
+`score_measures.symbolic_data`, and queried as data.
 
 ## Data model
 
@@ -161,7 +154,6 @@ is an open question rather than an inherited fact.
 | `measure_analyses` | 18,761 | versioned facts: keys, chords, directions, counts, texture |
 | `span_analyses` | 9,449 | engraved sections and derived candidate spans |
 | `span_relations` | 2,258 | `repeats`/`varies` between spans, with transposition and key evidence |
-| `score_segments` | 4,519 | the only embedded table — prose summaries for retrieval |
 
 Derived passes (`renumber_measures.py`, `build_harmony.py`, `build_sections.py`,
 `build_relations.py`) run from the database alone, so analysis is re-derivable in
@@ -195,10 +187,9 @@ broke before it was. Worth reading before changing the analysis.
 ```
 analysis/     humdrum.py (read the .krn directly) · numbering.py · harmony.py
               sections.py · span_relations.py · analyzer.py (music21)
-pipeline/     analysis_api.py · tools.py · chat.py · retrieval.py
-              embedder.py · providers.py · mei_converter.py
+pipeline/     analysis_api.py · tools.py · providers.py · mei_converter.py
 db/           models.py · schema.sql · store.py · migrations/
 evaluation/   ground_truth.json · scoring.py
 frontend/     index.html · score_viewer.html
-tests/        155 tests
+tests/        160 tests
 ```

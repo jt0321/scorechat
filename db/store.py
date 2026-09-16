@@ -1,6 +1,6 @@
 """
 db/store.py
-Persists works, score assets, score segments (with embeddings),
+Persists works, score assets,
 and text source chunks to Postgres via SQLAlchemy.
 """
 
@@ -12,15 +12,13 @@ from pathlib import Path
 from sqlalchemy import text
 from sqlalchemy.orm import aliased
 from db.models import (
-    Work, ScoreAsset, ScoreSegment, TextSource, ScoreSource, ScoreMeasure,
+    Work, ScoreAsset, ScoreSource, ScoreMeasure,
     MeasureAnalysis, AnalysisRun, SpanAnalysis, SpanRelation,
 )
 from db.session import session_scope
 from analysis.analyzer import (
-    CanonicalMeasure, MeasureChunk, PerMeasureAnalysis, SpanCandidate,
-    SPAN_ANALYSIS_VERSION,
+    CanonicalMeasure, PerMeasureAnalysis, SpanCandidate, SPAN_ANALYSIS_VERSION,
 )
-from pipeline.embedder import embed_texts
 
 
 def upsert_work(metadata: dict) -> int:
@@ -379,56 +377,6 @@ def get_theme_repeat_open_index(work_id: int) -> int | None:
         )
 
 
-def store_segments(work_id: int, chunks: list[MeasureChunk]) -> None:
-    """Embed all chunk summaries and bulk-insert into score_segments."""
-    texts = [c.summary_text for c in chunks]
-    vectors = embed_texts(texts)
-
-    with session_scope() as session:
-        for chunk, vec in zip(chunks, vectors):
-            seg = ScoreSegment(
-                work_id         = work_id,
-                part            = chunk.part,
-                measure_start   = chunk.measure_start,
-                measure_end     = chunk.measure_end,
-                local_key       = chunk.local_key,
-                roman_numerals  = chunk.roman_numerals,
-                harmonic_rhythm = chunk.harmonic_rhythm,
-                texture_tag     = chunk.texture_tag,
-                formal_function = chunk.formal_function,
-                motif_tags      = chunk.motif_tags or [],
-                summary_text    = chunk.summary_text,
-                musicxml_slice  = chunk.musicxml_slice,
-                embedding       = vec,
-            )
-            session.add(seg)
-
-        session.commit()
-
-
-def store_text_chunks(work_id: int, chunks: list[dict]) -> None:
-    """
-    chunks: list of dicts with keys: source_type, content, url (optional)
-    Embeds each chunk and inserts into text_sources.
-    """
-    texts = [c["content"] for c in chunks]
-    vectors = embed_texts(texts)
-
-    with session_scope() as session:
-        for i, (chunk, vec) in enumerate(zip(chunks, vectors)):
-            ts = TextSource(
-                work_id     = work_id,
-                source_type = chunk["source_type"],
-                content     = chunk["content"],
-                chunk_index = i,
-                embedding   = vec,
-                url         = chunk.get("url"),
-            )
-            session.add(ts)
-
-        session.commit()
-
-
 def list_works() -> list[dict]:
     """
     List all ingested works (id, composer, title, opus, nickname, work_number,
@@ -482,13 +430,10 @@ def clear_work_symbolic_layers(work_id: int) -> None:
         session.commit()
 
 
-def clear_work_segments_and_assets(work_id: int) -> None:
+def clear_work_assets(work_id: int) -> None:
     """Clear all derived records for a work to allow a complete re-ingestion."""
     clear_work_symbolic_layers(work_id)
     with session_scope() as session:
-        session.query(ScoreSegment).filter_by(work_id=work_id).delete()
-        # Delete text sources (like wikipedia or imslp text chunks)
-        session.query(TextSource).filter_by(work_id=work_id).delete()
         # Delete all assets; the ingestion script re-adds them
         session.query(ScoreAsset).filter_by(work_id=work_id).delete()
         session.commit()

@@ -1,13 +1,11 @@
 """
 pipeline/providers.py
-Selects LangChain chat/embedding model backends at runtime via env vars,
+Selects the LangChain chat backend at runtime via env vars,
 so scorechat isn't locked to OpenAI:
 
     CHAT_PROVIDER=openai|anthropic|ollama|gemini|openrouter|cloudflare
                                                    (default: openai)
     CHAT_MODEL=<model name>                        (provider-specific default if unset)
-    EMBEDDING_PROVIDER=openai|ollama|gemini        (default: openai)
-    EMBEDDING_MODEL=<model name>                   (provider-specific default if unset)
 
 `CHAT_PROVIDER` is the default, not the only choice: `chat_provider_options()`
 reports every provider with the keys it needs and whether those keys are
@@ -25,14 +23,9 @@ which is the one output this project treats as untrustworthy. The defaults
 below are picked for that, and free catalogues churn -- OpenRouter's free slugs
 come and go, so `CHAT_MODEL` is the escape hatch when a default disappears.
 
-Anthropic has no embeddings API, so EMBEDDING_PROVIDER=anthropic is rejected.
-
-Note on embeddings: score_segments.embedding / text_sources.embedding are
-declared `vector(1536)` in db/schema.sql. OpenAI's text-embedding-3-small
-produces 1536-dim vectors. Switching EMBEDDING_PROVIDER to a model with a
-different output dimension (e.g. Ollama's nomic-embed-text or Gemini's
-text-embedding-004, both 768-dim) will fail on insert/query against the
-existing columns and requires migrating the schema plus re-embedding all rows.
+There are no embedding backends here any more: nothing in ScoreChat is
+retrieved by similarity, so no text is embedded and no provider has to be
+chosen for it.
 """
 
 from __future__ import annotations
@@ -85,27 +78,12 @@ _CHAT_KEY_ENV = {name: spec["requires"][0] for name, spec in CHAT_PROVIDERS.item
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
-_EMBEDDING_DEFAULT_MODELS = {
-    "openai": "text-embedding-3-small",
-    "ollama": "nomic-embed-text",
-    "gemini": "models/gemini-embedding-001",
-}
-_EMBEDDING_KEY_ENV = {
-    "openai": "OPENAI_API_KEY",
-    "gemini": "GEMINI_API_KEY",
-}
-
-
 def _is_placeholder(value: str) -> bool:
     return not value or "your-" in value or value.startswith("sk-placeholder")
 
 
 def chat_provider() -> str:
     return os.environ.get("CHAT_PROVIDER", "openai").lower()
-
-
-def embedding_provider() -> str:
-    return os.environ.get("EMBEDDING_PROVIDER", "openai").lower()
 
 
 def chat_provider_ready(provider: str | None = None) -> bool:
@@ -142,14 +120,6 @@ def chat_provider_options() -> list[dict]:
         }
         for name, spec in CHAT_PROVIDERS.items()
     ]
-
-
-def embedding_provider_ready() -> bool:
-    provider = embedding_provider()
-    key_env = _EMBEDDING_KEY_ENV.get(provider)
-    if key_env is None:
-        return True
-    return not _is_placeholder(os.environ.get(key_env, ""))
 
 
 def get_chat_model(model: str | None = None, temperature: float = 0.3,
@@ -216,42 +186,4 @@ def get_chat_model(model: str | None = None, temperature: float = 0.3,
 
     raise ValueError(
         f"Unknown CHAT_PROVIDER '{provider}'. Supported: {', '.join(CHAT_PROVIDERS)}."
-    )
-
-
-def get_embeddings_model(model: str | None = None):
-    """Returns a LangChain embeddings model for EMBEDDING_PROVIDER (env-selected)."""
-    provider = embedding_provider()
-    model = model or os.environ.get("EMBEDDING_MODEL") or _EMBEDDING_DEFAULT_MODELS.get(provider)
-
-    if provider == "openai":
-        from langchain_openai import OpenAIEmbeddings
-        return OpenAIEmbeddings(model=model, api_key=os.environ["OPENAI_API_KEY"])
-
-    if provider == "ollama":
-        try:
-            from langchain_ollama import OllamaEmbeddings
-        except ImportError as e:
-            raise ImportError(
-                "EMBEDDING_PROVIDER=ollama requires langchain-ollama. "
-                "Install with: uv pip install langchain-ollama"
-            ) from e
-        return OllamaEmbeddings(model=model, base_url=os.environ.get("OLLAMA_BASE_URL"))
-
-    if provider == "gemini":
-        try:
-            from langchain_google_genai import GoogleGenerativeAIEmbeddings
-        except ImportError as e:
-            raise ImportError(
-                "EMBEDDING_PROVIDER=gemini requires langchain-google-genai. "
-                "Install with: uv pip install langchain-google-genai"
-            ) from e
-        dim = int(os.environ.get("EMBEDDING_DIM", "0")) or None
-        return GoogleGenerativeAIEmbeddings(
-            model=model, google_api_key=os.environ["GEMINI_API_KEY"], output_dimensionality=dim
-        )
-
-    raise ValueError(
-        f"Unknown or unsupported EMBEDDING_PROVIDER '{provider}'. Supported: openai, ollama, gemini "
-        "(Anthropic has no embeddings API)."
     )
