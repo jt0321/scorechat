@@ -76,10 +76,20 @@ def assign_roles(
     holds whether the barline was a repeat, a double bar, or an ending.
     """
     fallback = _prevailing_bar_duration(rows)
+    # A number the importer contradicts elsewhere is not evidence. music21
+    # numbers Op. 10 No. 3/i's anacrusis "1" and its two repeat-upbeats 126 and
+    # 186 -- the same numbers it gives the whole bars that follow them -- and
+    # trusting that made three fragments into bars, so the movement claimed 347
+    # bars against the source's 344.
+    contested = {
+        number for number, count in
+        collections.Counter(number for _, number, _, _ in rows if number).items()
+        if count > 1
+    }
     result: list[MeasureNumbering] = []
 
     for position, (index, number, duration, bar_duration) in enumerate(rows):
-        if number:
+        if number and not (number in contested and _is_fragment(rows, position, fallback)):
             result.append(MeasureNumbering(index, number, BAR, number))
             continue
 
@@ -98,8 +108,48 @@ def assign_roles(
             role = UPBEAT if completes and duration < full else UNBARRED
         result.append(MeasureNumbering(index, None, role, None))
 
+    _renumber(result)
     _attach(result)
     return result
+
+
+def _renumber(rows: list[MeasureNumbering]) -> None:
+    """Number the bars 1, 2, 3 ... in order.
+
+    Every source in this corpus numbers its barlines exactly 1..N -- no gaps,
+    no repeats, checked over all 103 -- so the k-th bar is bar k, and the
+    importer's own numbering is only ever a second opinion. It is a wrong one
+    in three movements, where music21 emits numbers that duplicate or run
+    backwards; for the other hundred this changes nothing.
+
+    Deriving the number rather than copying it is also what keeps the notation
+    viewer and the chat citing the same bar: both then agree with the source.
+    """
+    counter = 0
+    for row in rows:
+        if row.role != BAR:
+            continue
+        counter += 1
+        row.measure_number = counter
+
+
+def _is_fragment(
+    rows: list[tuple[int, int | None, float, float | None]], position: int, fallback: float
+) -> bool:
+    """Is this measure a pickup rather than a bar, whatever number it carries?
+
+    The same positive test the unnumbered path uses -- an opening partial
+    measure, or a partial one that completes the short measure before it -- so
+    a number is only ever overridden by the arithmetic that defines a bar.
+    """
+    _, _, duration, bar_duration = rows[position]
+    full = bar_duration or fallback
+    if full <= 0 or duration <= 0 or duration >= full:
+        return False
+    if position == 0:
+        return True
+    previous = next((rows[j] for j in range(position - 1, -1, -1) if rows[j][2] > 0), None)
+    return previous is not None and abs(previous[2] + duration - full) < 1e-6
 
 
 def _attach(rows: list[MeasureNumbering]) -> None:

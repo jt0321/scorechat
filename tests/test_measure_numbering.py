@@ -101,3 +101,37 @@ def test_excerpt_renders_only_the_requested_measures():
         pytest.skip("MEI has not been generated")
     svg = mei_to_svg(str(ANACRUSIS_MEI), 5, 8)
     assert len(re.findall(r'id="measure-L\d+"', svg)) == 4
+
+
+def test_a_multi_rest_carries_every_bar_it_collapses():
+    """Two bars of rest are engraved as one measure holding <multiRest num="2">.
+    Op. 110/ii does this twice, so its MEI has no measure numbered 38 and a
+    request for bar 38 silently rendered its neighbour."""
+    mei = ('<measure n="37"><multiRest num="2" /></measure>'
+           '<measure n="39"><note/></measure>')
+    ordinals = measure_ordinals(mei)
+    assert ordinals[37] == 1
+    assert ordinals[38] == 1      # inside the same engraved measure
+    assert ordinals[39] == 2
+
+
+def test_every_bar_of_the_corpus_is_addressable_in_its_rendering():
+    """The viewer and the chat must cite the same bar. Two bars in two
+    movements are not addressable -- degenerate measures at a tempo change --
+    and this pins that number so it cannot quietly grow."""
+    import re
+    from pathlib import Path
+    from analysis.humdrum import spine_layout
+    sources = sorted(Path("data").glob("sonata*.krn"))
+    if not sources:
+        pytest.skip("corpus not downloaded")
+    unaddressable = 0
+    for source in sources:
+        rendering = Path("data/mei") / f"{source.stem}.mei"
+        if not rendering.exists():
+            continue
+        bars = [int(m.group(1)) for _, line, _, toks in spine_layout(source.read_text(encoding="utf-8"))
+                if line.startswith("=") and toks and (m := re.match(r"^=+(\d+)", toks[0]))]
+        ordinals = measure_ordinals(rendering.read_text(encoding="utf-8"))
+        unaddressable += sum(1 for b in bars if b not in ordinals)
+    assert unaddressable <= 2, f"{unaddressable} bars cannot be rendered by number"

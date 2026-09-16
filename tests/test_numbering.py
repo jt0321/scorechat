@@ -37,20 +37,23 @@ def test_an_opening_partial_measure_is_an_anacrusis():
 
 
 def test_a_partial_measure_completing_a_short_bar_is_an_upbeat():
-    """Op. 2 No. 2/i is in 2/2. Bar 228 is written short at 1.5 beats and the
-    missing 0.5 is written after the barline, so it can lead back into the
-    exposition or on into the recapitulation. That fragment is a pickup, not a
-    bar, and not debris."""
-    result = assign_roles(rows((228, 1.5, 2.0), (None, 0.5, 2.0), (229, 2.0, 2.0)))
+    """Op. 2 No. 2/i is in 2/2. A bar written short at 1.5 beats with the
+    missing 0.5 after the barline lets that fragment lead back into the
+    exposition or on into the recapitulation. It is a pickup, not a bar, and
+    not debris."""
+    result = assign_roles(rows((1, 1.5, 2.0), (None, 0.5, 2.0), (2, 2.0, 2.0)))
     assert result[1].role == UPBEAT
     assert result[1].measure_number is None
 
 
 def test_an_upbeat_belongs_to_the_bar_it_leads_into():
-    """Which is why the recapitulation reads as m. 229 and not as m. 228: the
-    pickup is the start of the new material, not the end of the old."""
-    result = assign_roles(rows((228, 1.5, 2.0), (None, 0.5, 2.0), (229, 2.0, 2.0)))
-    assert result[1].belongs_to == 229
+    """Which is why Op. 2 No. 2/i's recapitulation reads as m. 229 and not as
+    m. 228: the pickup is the start of the new material, not the end of the
+    old. Bar numbers are derived by position, so the third measure here is
+    bar 2 and the pickup belongs to it."""
+    result = assign_roles(rows((1, 1.5, 2.0), (None, 0.5, 2.0), (2, 2.0, 2.0)))
+    assert [r.measure_number for r in result] == [1, None, 2]
+    assert result[1].belongs_to == 2
 
 
 def test_an_unnumbered_measure_that_completes_nothing_is_unbarred():
@@ -90,9 +93,9 @@ def test_bar_length_falls_back_to_the_commonest_numbered_measure():
 # --- reporting --------------------------------------------------------------
 
 def test_a_range_opening_on_a_pickup_is_reported_as_the_bar_it_leads_into():
-    result = assign_roles(rows((228, 1.5, 2.0), (None, 0.5, 2.0), (229, 2.0, 2.0), (230, 2.0, 2.0)))
+    result = assign_roles(rows((1, 1.5, 2.0), (None, 0.5, 2.0), (2, 2.0, 2.0), (3, 2.0, 2.0)))
     assert resolve_range(result, 1, 3) == {
-        "measure_start": 229, "measure_end": 230, "starts_with_upbeat": True,
+        "measure_start": 2, "measure_end": 3, "starts_with_upbeat": True,
     }
 
 
@@ -144,3 +147,30 @@ def test_a_whole_bar_in_a_faster_meter_is_not_an_upbeat():
     assert in_six_sixteen[1].role == UNBARRED     # a whole bar, merely unnumbered
     in_nine_sixteen = assign_roles(rows((36, 0.75, 2.25), (None, 1.5, 2.25), (37, 2.25, 2.25)))
     assert in_nine_sixteen[1].role == UPBEAT      # 0.75 + 1.5 makes one 9/16 bar
+
+
+# --- where the number comes from --------------------------------------------
+
+def test_bar_numbers_are_derived_by_position_not_copied_from_the_importer():
+    """Every source in this corpus numbers its barlines exactly 1..N, so the
+    k-th bar is bar k. music21's own numbering duplicates and runs backwards in
+    three movements, and copying it made the viewer and the chat cite different
+    bars."""
+    result = assign_roles(rows((7, 4.0, 4.0), (7, 4.0, 4.0), (3, 4.0, 4.0)))
+    assert [r.measure_number for r in result] == [1, 2, 3]
+
+
+def test_a_contradicted_number_does_not_make_a_fragment_a_bar():
+    """music21 numbers Op. 10 No. 3/i's anacrusis "1" -- the same number it
+    gives the whole bar after it. A number the importer contradicts elsewhere
+    is not evidence, so the arithmetic decides."""
+    result = assign_roles(rows((1, 1.0, 4.0), (1, 4.0, 4.0), (2, 4.0, 4.0)))
+    assert result[0].role == ANACRUSIS
+    assert [r.measure_number for r in result] == [None, 1, 2]
+
+
+def test_an_uncontradicted_short_measure_is_left_alone():
+    """A final bar may legitimately be short. Only a number the importer has
+    used twice is overridden."""
+    result = assign_roles(rows((1, 4.0, 4.0), (2, 4.0, 4.0), (3, 1.0, 4.0)))
+    assert [r.role for r in result] == [BAR, BAR, BAR]

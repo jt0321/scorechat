@@ -56,6 +56,7 @@ def score_to_mei(score_path: str, output_dir: Optional[str] = None) -> Optional[
 # differ by one for any movement with an upbeat, and this is the seam where
 # that gets reconciled -- see measure_ordinals().
 _MEI_MEASURE = re.compile(r"<measure\b([^>]*)>")
+_MEI_MULTIREST = re.compile(r'<multiRest\b[^>]*\snum="(\d+)"')
 _MEI_MEASURE_NUMBER = re.compile(r'\bn="([^"]*)"')
 
 
@@ -72,7 +73,7 @@ def measure_ordinals(mei_str: str) -> dict[int, int]:
     none. `pickup_ordinals` below is how a range still renders them.
     """
     ordinals: dict[int, int] = {}
-    for position, attributes in enumerate(_MEI_MEASURE.findall(mei_str), start=1):
+    for position, (attributes, body) in enumerate(_iter_measures(mei_str), start=1):
         match = _MEI_MEASURE_NUMBER.search(attributes)
         if match is None:
             continue
@@ -81,7 +82,23 @@ def measure_ordinals(mei_str: str) -> dict[int, int]:
         except ValueError:
             continue
         ordinals.setdefault(number, position)
+        # A bar of rest followed by more of them is engraved as one measure
+        # carrying <multiRest num="k">, so k printed bars live at this ordinal.
+        # Without this, Op. 110/ii has no measure numbered 38 and a request for
+        # it silently renders its neighbour.
+        rest = _MEI_MULTIREST.search(body)
+        if rest:
+            for offset in range(1, int(rest.group(1))):
+                ordinals.setdefault(number + offset, position)
     return ordinals
+
+
+def _iter_measures(mei_str: str):
+    """(attributes, body) for each <measure>, in document order."""
+    starts = [m for m in _MEI_MEASURE.finditer(mei_str)]
+    for index, match in enumerate(starts):
+        end = starts[index + 1].start() if index + 1 < len(starts) else len(mei_str)
+        yield match.group(1), mei_str[match.end():end]
 
 
 def pickup_ordinals(mei_str: str) -> dict[int, int]:
