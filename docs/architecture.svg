@@ -1,150 +1,107 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1480" height="1000" viewBox="0 0 1480 1000" font-family="'DejaVu Sans',Verdana,sans-serif">
+<svg xmlns="http://www.w3.org/2000/svg" width="1240" height="790" viewBox="0 0 1240 790" font-family="'DejaVu Sans',Verdana,sans-serif">
   <defs>
     <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
       <path d="M0,0 L10,5 L0,10 z" fill="#5a6673"/>
     </marker>
-    <marker id="aq" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
-      <path d="M0,0 L10,5 L0,10 z" fill="#9aa5b1"/>
-    </marker>
   </defs>
 
-  <rect width="1480" height="1000" fill="#f5f6f7"/>
+  <rect width="1240" height="790" fill="#f5f6f7"/>
 
-  <text x="40" y="52" font-size="27" font-weight="bold" fill="#131a22">ScoreChat — symbolic score analysis</text>
+  <text x="40" y="52" font-size="26" font-weight="bold" fill="#131a22">ScoreChat — symbolic score analysis</text>
   <text x="40" y="78" font-size="15" fill="#5a6673">The score is the source of musical truth. Every derived pass runs from the database alone; the model reads stored analysis and writes none.</text>
 
-  <!-- ============ band 1: source ============ -->
-  <rect x="40" y="108" width="300" height="74" rx="5" fill="#131a22"/>
-  <text x="60" y="137" font-size="16" font-weight="bold" fill="#ffffff">Humdrum .krn</text>
-  <text x="60" y="160" font-size="13" fill="#b9c3cd">103 movements · 32 sonatas</text>
+  <!-- ============ source ============ -->
+  <rect x="40" y="108" width="300" height="60" rx="5" fill="#131a22"/>
+  <text x="60" y="134" font-size="16" font-weight="bold" fill="#ffffff">Humdrum .krn</text>
+  <text x="60" y="155" font-size="13" fill="#b9c3cd">103 movements · 32 sonatas</text>
 
-  <!-- ============ band 2: two readers ============ -->
-  <text x="40" y="228" font-size="12" font-weight="bold" fill="#78889a" letter-spacing="1.6">TWO READERS OF THE SAME FILE</text>
+  <!-- ============ two readers ============ -->
+  <text x="40" y="212" font-size="12" font-weight="bold" fill="#78889a" letter-spacing="1.6">TWO READERS OF THE SAME FILE</text>
 
-  <rect x="40" y="244" width="430" height="128" rx="5" fill="#ffffff" stroke="#c9d2da"/>
-  <text x="60" y="272" font-size="15" font-weight="bold" fill="#131a22">music21 — load_score()</text>
-  <text x="60" y="295" font-size="13" fill="#4a5866">notes, durations, ties, voices, meter</text>
-  <text x="60" y="316" font-size="13" fill="#4a5866">validated against the source's own barlines;</text>
-  <text x="60" y="335" font-size="13" fill="#4a5866">falls back to Verovio/humlib when it truncates</text>
-  <text x="60" y="357" font-size="12" font-style="italic" fill="#8a6014">4 of 103 movements need that fallback</text>
+  <rect x="40" y="226" width="560" height="84" rx="5" fill="#ffffff" stroke="#c9d2da"/>
+  <text x="60" y="252" font-size="15" font-weight="bold" fill="#131a22">music21 — load_score()</text>
+  <text x="60" y="274" font-size="13" fill="#4a5866">notes, durations, ties, voices, meter</text>
+  <text x="60" y="295" font-size="12" font-style="italic" fill="#8a6014">falls back to Verovio/humlib where it truncates — 4 of 103</text>
 
-  <rect x="510" y="244" width="430" height="128" rx="5" fill="#ffffff" stroke="#c9d2da"/>
-  <text x="530" y="272" font-size="15" font-weight="bold" fill="#131a22">analysis/humdrum.py — direct</text>
-  <text x="530" y="295" font-size="13" fill="#4a5866">spine-aware: tracks *^ splits and *v joins</text>
-  <text x="530" y="316" font-size="13" fill="#4a5866">declared key (*f:) · **dynam · *&gt;[A,A,B] sections</text>
-  <text x="530" y="357" font-size="12" font-style="italic" fill="#2c6440">what music21 discards or misreads</text>
+  <rect x="640" y="226" width="560" height="84" rx="5" fill="#ffffff" stroke="#c9d2da"/>
+  <text x="660" y="252" font-size="15" font-weight="bold" fill="#131a22">analysis/humdrum.py — direct, spine-aware</text>
+  <text x="660" y="274" font-size="13" fill="#4a5866">declared key (*f:) · sections (*&gt;[A,A,B]) · **dynam</text>
+  <text x="660" y="295" font-size="12" font-style="italic" fill="#2c6440">read from the raw source, bypassing the parse</text>
 
-  <line x1="120" y1="182" x2="120" y2="240" stroke="#5a6673" stroke-width="1.6" marker-end="url(#a)"/>
-  <line x1="240" y1="182" x2="690" y2="240" stroke="#5a6673" stroke-width="1.6" marker-end="url(#a)"/>
+  <path d="M190 168 L190 190 L920 190" fill="none" stroke="#5a6673" stroke-width="1.6"/>
+  <line x1="430" y1="190" x2="430" y2="222" stroke="#5a6673" stroke-width="1.6" marker-end="url(#a)"/>
+  <line x1="920" y1="190" x2="920" y2="222" stroke="#5a6673" stroke-width="1.6" marker-end="url(#a)"/>
 
-  <!-- ============ band 3: canonical layer ============ -->
-  <text x="40" y="424" font-size="12" font-weight="bold" fill="#78889a" letter-spacing="1.6">CANONICAL LAYER — POSTGRES</text>
+  <!-- ============ canonical layer ============ -->
+  <text x="40" y="352" font-size="12" font-weight="bold" fill="#78889a" letter-spacing="1.6">CANONICAL LAYER — POSTGRES</text>
 
-  <rect x="40" y="440" width="900" height="124" rx="5" fill="#eef1f4" stroke="#c9d2da"/>
-  <rect x="58" y="458" width="270" height="88" rx="4" fill="#ffffff" stroke="#c9d2da"/>
-  <text x="74" y="482" font-size="14" font-weight="bold" fill="#131a22">score_sources</text>
-  <text x="74" y="504" font-size="12" fill="#4a5866">raw .krn text + SHA-256</text>
-  <text x="74" y="524" font-size="12" fill="#4a5866">every later pass re-reads</text>
-  <text x="74" y="540" font-size="12" fill="#4a5866">the source from here</text>
+  <rect x="40" y="366" width="1160" height="96" rx="5" fill="#eef1f4" stroke="#c9d2da"/>
+  <rect x="58" y="384" width="356" height="60" rx="4" fill="#ffffff" stroke="#c9d2da"/>
+  <text x="76" y="408" font-size="14" font-weight="bold" fill="#131a22">score_sources</text>
+  <text x="76" y="430" font-size="12" fill="#4a5866">raw .krn + SHA-256 — every pass re-reads it</text>
 
-  <rect x="344" y="458" width="270" height="88" rx="4" fill="#ffffff" stroke="#c9d2da"/>
-  <text x="360" y="482" font-size="14" font-weight="bold" fill="#131a22">score_measures</text>
-  <text x="360" y="504" font-size="12" fill="#4a5866">symbolic_data (JSONB)</text>
-  <text x="360" y="524" font-size="12" fill="#4a5866">measure_number · role</text>
-  <text x="360" y="540" font-size="12" fill="#4a5866">measure_belongs_to</text>
+  <rect x="442" y="384" width="356" height="60" rx="4" fill="#ffffff" stroke="#c9d2da"/>
+  <text x="460" y="408" font-size="14" font-weight="bold" fill="#131a22">score_measures</text>
+  <text x="460" y="430" font-size="12" fill="#4a5866">symbolic_data (JSONB) · numbering · role</text>
 
-  <rect x="630" y="458" width="292" height="88" rx="4" fill="#ffffff" stroke="#c9d2da"/>
-  <text x="646" y="482" font-size="14" font-weight="bold" fill="#131a22">measure_analyses</text>
-  <text x="646" y="504" font-size="12" fill="#4a5866">versioned, reproducible facts</text>
-  <text x="646" y="524" font-size="12" fill="#4a5866">keys · chords · directions</text>
-  <text x="646" y="540" font-size="12" fill="#4a5866">counts · texture</text>
+  <rect x="826" y="384" width="356" height="60" rx="4" fill="#ffffff" stroke="#c9d2da"/>
+  <text x="844" y="408" font-size="14" font-weight="bold" fill="#131a22">measure_analyses</text>
+  <text x="844" y="430" font-size="12" fill="#4a5866">versioned facts: keys · chords · directions</text>
 
-  <line x1="240" y1="372" x2="240" y2="436" stroke="#5a6673" stroke-width="1.6" marker-end="url(#a)"/>
-  <line x1="720" y1="372" x2="720" y2="436" stroke="#5a6673" stroke-width="1.6" marker-end="url(#a)"/>
+  <line x1="430" y1="310" x2="430" y2="362" stroke="#5a6673" stroke-width="1.6" marker-end="url(#a)"/>
+  <line x1="920" y1="310" x2="920" y2="362" stroke="#5a6673" stroke-width="1.6" marker-end="url(#a)"/>
 
-  <!-- ============ band 4: derived passes ============ -->
-  <text x="40" y="616" font-size="12" font-weight="bold" fill="#78889a" letter-spacing="1.6">DERIVED PASSES — RUN FROM THE DATABASE ALONE, RE-RUNNABLE WITHOUT RE-INGESTING</text>
+  <!-- ============ derived passes ============ -->
+  <text x="40" y="504" font-size="12" font-weight="bold" fill="#78889a" letter-spacing="1.6">DERIVED PASSES — FROM THE DATABASE ALONE, RE-RUNNABLE WITHOUT RE-INGESTING</text>
 
-  <rect x="40" y="632" width="214" height="112" rx="5" fill="#ffffff" stroke="#34417f" stroke-width="1.5"/>
-  <text x="58" y="658" font-size="14" font-weight="bold" fill="#34417f">numbering</text>
-  <text x="58" y="680" font-size="12" fill="#4a5866">which measures are bars</text>
-  <text x="58" y="699" font-size="12" fill="#4a5866">bar · anacrusis · upbeat</text>
-  <text x="58" y="718" font-size="12" fill="#4a5866">unbarred · empty</text>
-  <text x="58" y="737" font-size="11" fill="#78889a">renumber_measures.py</text>
+  <rect x="40" y="532" width="275" height="78" rx="5" fill="#ffffff" stroke="#34417f" stroke-width="1.5"/>
+  <text x="58" y="558" font-size="14" font-weight="bold" fill="#34417f">numbering</text>
+  <text x="58" y="580" font-size="12" fill="#4a5866">which measures are bars</text>
+  <text x="58" y="600" font-size="11" fill="#78889a">renumber_measures.py</text>
 
-  <rect x="268" y="632" width="214" height="112" rx="5" fill="#ffffff" stroke="#34417f" stroke-width="1.5"/>
-  <text x="286" y="658" font-size="14" font-weight="bold" fill="#34417f">harmony</text>
-  <text x="286" y="680" font-size="12" fill="#4a5866">key trajectory (Viterbi)</text>
-  <text x="286" y="699" font-size="12" fill="#2c6440">anchored to the declared key</text>
-  <text x="286" y="718" font-size="12" fill="#4a5866">beat-window chord fitting</text>
-  <text x="286" y="737" font-size="11" fill="#78889a">build_harmony.py · ~18s</text>
+  <rect x="335" y="532" width="275" height="78" rx="5" fill="#ffffff" stroke="#34417f" stroke-width="1.5"/>
+  <text x="353" y="558" font-size="14" font-weight="bold" fill="#34417f">harmony</text>
+  <text x="353" y="580" font-size="12" fill="#4a5866">key trajectory · chords</text>
+  <text x="353" y="600" font-size="11" fill="#78889a">build_harmony.py</text>
 
-  <rect x="496" y="632" width="214" height="112" rx="5" fill="#ffffff" stroke="#34417f" stroke-width="1.5"/>
-  <text x="514" y="658" font-size="14" font-weight="bold" fill="#34417f">sections</text>
-  <text x="514" y="680" font-size="12" fill="#2c6440">engraved repeat scheme</text>
-  <text x="514" y="699" font-size="12" fill="#4a5866">confidence 1.0 — notated,</text>
-  <text x="514" y="718" font-size="12" fill="#4a5866">not estimated</text>
-  <text x="514" y="737" font-size="11" fill="#78889a">build_sections.py</text>
+  <rect x="630" y="532" width="275" height="78" rx="5" fill="#ffffff" stroke="#34417f" stroke-width="1.5"/>
+  <text x="648" y="558" font-size="14" font-weight="bold" fill="#34417f">sections</text>
+  <text x="648" y="580" font-size="12" fill="#2c6440">engraved repeat scheme</text>
+  <text x="648" y="600" font-size="11" fill="#78889a">build_sections.py</text>
 
-  <rect x="724" y="632" width="216" height="112" rx="5" fill="#ffffff" stroke="#34417f" stroke-width="1.5"/>
-  <text x="742" y="658" font-size="14" font-weight="bold" fill="#34417f">relations</text>
-  <text x="742" y="680" font-size="12" fill="#4a5866">repeats / varies between</text>
-  <text x="742" y="699" font-size="12" fill="#4a5866">spans, with transposition</text>
-  <text x="742" y="718" font-size="12" fill="#4a5866">and key corroboration</text>
-  <text x="742" y="737" font-size="11" fill="#78889a">build_relations.py</text>
+  <rect x="925" y="532" width="275" height="78" rx="5" fill="#ffffff" stroke="#34417f" stroke-width="1.5"/>
+  <text x="943" y="558" font-size="14" font-weight="bold" fill="#34417f">relations</text>
+  <text x="943" y="580" font-size="12" fill="#4a5866">repeats / varies between spans</text>
+  <text x="943" y="600" font-size="11" fill="#78889a">build_relations.py</text>
 
-  <line x1="490" y1="564" x2="490" y2="628" stroke="#5a6673" stroke-width="1.6" marker-end="url(#a)"/>
-  <path d="M120 564 L120 600 L147 600 L147 628" fill="none" stroke="#5a6673" stroke-width="1.6" marker-end="url(#a)"/>
-  <path d="M860 564 L860 600 L832 600 L832 628" fill="none" stroke="#5a6673" stroke-width="1.6" marker-end="url(#a)"/>
+  <path d="M700 462 L700 512 L177 512" fill="none" stroke="#5a6673" stroke-width="1.6"/>
+  <path d="M700 512 L1062 512" fill="none" stroke="#5a6673" stroke-width="1.6"/>
+  <line x1="177" y1="512" x2="177" y2="528" stroke="#5a6673" stroke-width="1.6" marker-end="url(#a)"/>
+  <line x1="472" y1="512" x2="472" y2="528" stroke="#5a6673" stroke-width="1.6" marker-end="url(#a)"/>
+  <line x1="767" y1="512" x2="767" y2="528" stroke="#5a6673" stroke-width="1.6" marker-end="url(#a)"/>
+  <line x1="1062" y1="512" x2="1062" y2="528" stroke="#5a6673" stroke-width="1.6" marker-end="url(#a)"/>
 
-  <!-- sections reads the raw source, not the parse -->
-  <path d="M955 300 L968 300 L968 588 L603 588 L603 628" fill="none" stroke="#2c6440" stroke-width="1.6" stroke-dasharray="6 4" marker-end="url(#a)"/>
-  <text x="1000" y="330" font-size="12" fill="#2c6440">the repeat scheme and the</text>
-  <text x="1000" y="348" font-size="12" fill="#2c6440">declared key are read from</text>
-  <text x="1000" y="366" font-size="12" fill="#2c6440">the raw source, bypassing</text>
-  <text x="1000" y="384" font-size="12" fill="#2c6440">the parse entirely</text>
+  <!-- ============ answering ============ -->
+  <text x="40" y="638" font-size="12" font-weight="bold" fill="#78889a" letter-spacing="1.6">ANSWERING</text>
 
-  <!-- ============ band 5: answering ============ -->
-  <text x="40" y="816" font-size="12" font-weight="bold" fill="#78889a" letter-spacing="1.6">ANSWERING</text>
+  <rect x="40" y="652" width="360" height="84" rx="5" fill="#ffffff" stroke="#c9d2da"/>
+  <text x="58" y="678" font-size="14" font-weight="bold" fill="#131a22">pipeline/analysis_api.py</text>
+  <text x="58" y="700" font-size="12" fill="#4a5866">six plain functions over stored analysis</text>
+  <text x="58" y="721" font-size="11" fill="#78889a">testable without a model</text>
 
-  <rect x="40" y="832" width="330" height="128" rx="5" fill="#ffffff" stroke="#c9d2da"/>
-  <text x="58" y="858" font-size="14" font-weight="bold" fill="#131a22">pipeline/analysis_api.py</text>
-  <text x="58" y="880" font-size="12" fill="#4a5866">resolve_work · describe_span</text>
-  <text x="58" y="899" font-size="12" fill="#4a5866">find_recurrences · compare_spans</text>
-  <text x="58" y="918" font-size="12" fill="#4a5866">get_key_plan · locate_in_form</text>
-  <text x="58" y="942" font-size="11" fill="#78889a">plain functions — testable without a model</text>
+  <rect x="440" y="652" width="360" height="84" rx="5" fill="#ffffff" stroke="#c9d2da"/>
+  <text x="458" y="678" font-size="14" font-weight="bold" fill="#131a22">pipeline/tools.py</text>
+  <text x="458" y="700" font-size="12" font-style="italic" fill="#8a6014">the six bound as LLM tools — the trace is the citation</text>
+  <text x="458" y="721" font-size="11" fill="#78889a">ask.py · GET /api/ask · web client</text>
 
-  <rect x="396" y="832" width="300" height="128" rx="5" fill="#ffffff" stroke="#c9d2da"/>
-  <text x="414" y="858" font-size="14" font-weight="bold" fill="#131a22">pipeline/tools.py</text>
-  <text x="414" y="880" font-size="12" fill="#4a5866">the six bound as LLM tools</text>
-  <text x="414" y="899" font-size="12" fill="#4a5866">+ the call loop</text>
-  <text x="414" y="921" font-size="12" font-style="italic" fill="#8a6014">the trace is the citation</text>
-  <text x="414" y="942" font-size="11" fill="#78889a">ask.py · GET /api/ask</text>
+  <rect x="840" y="652" width="360" height="84" rx="5" fill="#ffffff" stroke="#c9d2da"/>
+  <text x="858" y="678" font-size="14" font-weight="bold" fill="#131a22">MEI via Verovio</text>
+  <text x="858" y="700" font-size="12" fill="#4a5866">exact notation for a cited bar range</text>
+  <text x="858" y="721" font-size="11" fill="#78889a">notation viewer</text>
 
-  <rect x="722" y="832" width="218" height="128" rx="5" fill="#ffffff" stroke="#c9d2da"/>
-  <text x="740" y="858" font-size="14" font-weight="bold" fill="#131a22">MEI via Verovio</text>
-  <text x="740" y="880" font-size="12" fill="#4a5866">exact SVG notation</text>
-  <text x="740" y="899" font-size="12" fill="#4a5866">for a cited bar range</text>
-  <text x="740" y="921" font-size="12" fill="#4a5866">pickups included</text>
-  <text x="740" y="942" font-size="11" fill="#78889a">notation viewer</text>
+  <line x1="220" y1="610" x2="220" y2="648" stroke="#5a6673" stroke-width="1.6" marker-end="url(#a)"/>
+  <line x1="400" y1="694" x2="436" y2="694" stroke="#5a6673" stroke-width="1.6" marker-end="url(#a)"/>
+  <line x1="800" y1="694" x2="836" y2="694" stroke="#5a6673" stroke-width="1.6" marker-end="url(#a)"/>
 
-  <line x1="147" y1="744" x2="147" y2="828" stroke="#5a6673" stroke-width="1.6" marker-end="url(#a)"/>
-  <line x1="370" y1="896" x2="392" y2="896" stroke="#5a6673" stroke-width="1.6" marker-end="url(#a)"/>
-  <path d="M600 744 L600 790 L831 790 L831 828" fill="none" stroke="#5a6673" stroke-width="1.6" marker-end="url(#a)"/>
-
-  <!-- ============ evaluation ============ -->
-  <rect x="1000" y="632" width="440" height="112" rx="5" fill="#ffffff" stroke="#c9d2da"/>
-  <text x="1018" y="658" font-size="14" font-weight="bold" fill="#131a22">evaluate_form.py</text>
-  <text x="1018" y="680" font-size="12" fill="#4a5866">ten movements whose form is known independently</text>
-  <text x="1018" y="699" font-size="12" fill="#4a5866">scores what is stored, not a re-derivation</text>
-  <text x="1018" y="722" font-size="13" font-weight="bold" fill="#2c6440">49 / 50 at a four-bar tolerance</text>
-
-  <rect x="1000" y="832" width="440" height="128" rx="5" fill="#f2eee6" stroke="#c9d2da"/>
-  <text x="1018" y="858" font-size="14" font-weight="bold" fill="#131a22">Legacy retrieval path</text>
-  <text x="1018" y="880" font-size="12" fill="#4a5866">score_segments + pgvector → pipeline/chat.py</text>
-  <text x="1018" y="899" font-size="12" fill="#4a5866">GET /api/chat, still used by the score viewer</text>
-  <text x="1018" y="922" font-size="12" font-style="italic" fill="#8a6014">Neither headline question is a retrieval problem:</text>
-  <text x="1018" y="941" font-size="12" font-style="italic" fill="#8a6014">the measures are given, or the answer is a graph edge.</text>
-
-  <line x1="944" y1="688" x2="996" y2="688" stroke="#9aa5b1" stroke-width="1.4" marker-end="url(#aq)"/>
+  <text x="40" y="768" font-size="12" fill="#5a6673">evaluate_form.py scores what is stored against ten independently known movements — 49/50 at a four-bar tolerance. The older pgvector path (/api/chat) is unused by the clients.</text>
 </svg>
