@@ -2,7 +2,7 @@
 server.py
 ---------
 Simple Python http.server-based backend to serve the frontend and expose
-the ScoreChat RAG API at /api/chat.
+the ScoreChat analysis API at /api/ask.
 
 Usage:
     python server.py
@@ -73,7 +73,9 @@ class ScoreChatHandler(SimpleHTTPRequestHandler):
                 self._send_json(500, {"error": str(e)})
             return
 
-        # RAG Chat API Endpoint
+        # Retrieval endpoint: pgvector search over `score_segments` prose.
+        # Kept for the Streamlit client, which is still written against this
+        # shape; the HTML client now asks /api/ask instead.
         if parsed_url.path == "/api/chat":
             query_params = urllib.parse.parse_qs(parsed_url.query)
             query = query_params.get("query", [""])[0]
@@ -103,11 +105,10 @@ class ScoreChatHandler(SimpleHTTPRequestHandler):
                 self.wfile.write(json.dumps({"error": str(e)}).encode("utf-8"))
             return
 
-        # Tool-calling analysis endpoint. Kept separate from /api/chat rather
-        # than replacing it: the two answer differently -- retrieval returns
-        # segments the viewer renders, while this returns prose plus the trace
-        # of stored analysis it was built from -- and the existing client is
-        # written against the retrieval shape.
+        # Tool-calling analysis endpoint, and what the HTML client asks. It
+        # returns prose plus the trace of stored analysis the answer was built
+        # from; the client renders that trace as the citation, and reads the
+        # bar ranges out of the calls' arguments to open the score at them.
         if parsed_url.path == "/api/ask":
             query_params = urllib.parse.parse_qs(parsed_url.query)
             question = query_params.get("question", [""])[0]

@@ -754,56 +754,136 @@
       const loaderId = appendLoadingMessage();
 
       try {
-        const response = await fetch(`/api/chat?query=${encodeURIComponent(query)}`);
+        const response = await fetch(`/api/ask?question=${encodeURIComponent(query)}`);
         if (!response.ok) throw new Error("Server error");
-        
+
         const data = await response.json();
-        
+
         // Remove typing indicator
         removeMessage(loaderId);
 
-        // Append assistant response and segment cards
-        appendMessage("assistant", data.answer, data.segments);
-        
-        // Automatically load the first segment's work into the viewer,
-        // jumped to the page containing its measures
-        if (data.segments && data.segments.length > 0) {
-          const firstSeg = data.segments[0];
-          const label = `${firstSeg.composer} — ${firstSeg.title}${firstSeg.opus ? `, ${firstSeg.opus}` : ""}`;
-          loadWorkIntoViewer(firstSeg.work_id, label, firstSeg.measure_start, firstSeg.measure_end);
+        // The trace is the citation, so it is what the cards show: every claim
+        // in the prose should have a call under it.
+        const citations = traceCitations(data.trace);
+        const text = data.answer
+          ? (data.error ? `${data.answer}\n\n_${data.error}_` : data.answer)
+          : (data.error || "No answer was returned.");
+        appendMessage("assistant", text, citations);
+
+        // Open the score at the first cited range, so the passage the answer
+        // talks about is on screen next to it.
+        const firstRange = citations.find(c => c.work_id && c.measure_start !== null);
+        if (firstRange) {
+          loadWorkIntoViewer(firstRange.work_id, firstRange.label,
+                             firstRange.measure_start, firstRange.measure_end);
         }
-        
+
       } catch (err) {
         removeMessage(loaderId);
         appendMessage("assistant", "Sorry, I encountered an error processing your request: " + err.message);
       }
     }
 
+    // Turn the tool-call trace into citation cards. A card names one call the
+    // answer rests on; the ones that carry a bar range open it in the score.
+    function traceCitations(trace) {
+      let work = null;
+      return (trace || []).map(step => {
+        const args = step.args || {};
+        const result = step.result || {};
+        if (result.resolved) work = result.resolved;
+
+        const measures = args.measure_start !== undefined
+          ? [args.measure_start, args.measure_end]
+          : args.a_start !== undefined
+            ? [args.a_start, args.a_end]
+            : args.measure !== undefined
+              ? [args.measure, args.measure]
+              : [null, null];
+
+        return {
+          tool: step.tool,
+          work_id: args.work_id || (result.resolved ? result.resolved.work_id : null),
+          label: work ? workLabel(work) : "",
+          measure_start: measures[0],
+          measure_end: measures[1],
+          detail: citationDetail(step.tool, result),
+        };
+      });
+    }
+
+    function workLabel(work) {
+      return `${work.composer} — ${work.title}${work.opus ? `, ${work.opus}` : ""}`;
+    }
+
+    // One line saying what the call returned. Deliberately short: the prose is
+    // the answer, and these only have to be checkable.
+    function citationDetail(toolName, result) {
+      if (result.error) return result.error;
+      const parts = [];
+      const region = r => `${r.value} mm. ${r.measure_start}\u2013${r.measure_end}`;
+      switch (toolName) {
+        case "resolve_work_tool":
+          parts.push(result.resolved ? workLabel(result.resolved)
+                                     : `${(result.matches || []).length} candidates`);
+          if (result.resolved && result.resolved.reference_edition) {
+            parts.push(`bar numbers from ${result.resolved.reference_edition}`);
+          }
+          break;
+        case "describe_span_tool":
+          (result.keys || []).forEach(k => parts.push(region(k)));
+          parts.push(`${(result.chords || []).length} chords, ${(result.directions || []).length} directions`);
+          if (result.section) parts.push(`section ${result.section.label}`);
+          if (result.starts_with_upbeat) parts.push("opens on the upbeat");
+          break;
+        case "find_recurrences_tool":
+          (result.recurrences || []).slice(0, 4).forEach(r => parts.push(
+            `${r.relation_type} ${r.direction} mm. ${(r.direction === "returns_at" ? r.target_measures : r.source_measures).join("\u2013")} (${r.confidence})`));
+          break;
+        case "compare_spans_tool":
+          parts.push(`repeats ${result.repeats_confidence}, varies ${result.varies_confidence}`);
+          if (result.transposed_semitones !== null && result.transposed_semitones !== undefined) {
+            parts.push(`${result.transposed_semitones} semitones (consistency ${result.transposition_consistency})`);
+          }
+          break;
+        case "get_key_plan_tool":
+          (result.regions || []).slice(0, 6).forEach(r => parts.push(region(r)));
+          break;
+        case "locate_in_form_tool":
+          if (result.section) {
+            parts.push(`section ${result.section.label}, mm. ${result.section.measure_start}\u2013${result.section.measure_end}`);
+          }
+          if (result.repeat_scheme) parts.push(`scheme ${[].concat(result.repeat_scheme).join(" ")}`);
+          break;
+      }
+      if (result.note) parts.push(result.note);
+      return parts.length ? parts.join(" \u00b7 ") : "no result";
+    }
+
     // Append Chat Bubble
-    function appendMessage(role, text, segments = []) {
+    function appendMessage(role, text, citations = []) {
       const messagesContainer = document.getElementById("chat-messages");
       
       const msgDiv = document.createElement("div");
       msgDiv.className = `message ${role}`;
       
       let segmentsHtml = "";
-      if (segments && segments.length > 0) {
+      if (citations && citations.length > 0) {
         segmentsHtml = `<div class="segment-cards-container">`;
-        segments.forEach((seg, idx) => {
-          const statusText = "Click to view in score";
-          const serializedSeg = encodeURIComponent(JSON.stringify(seg));
+        citations.forEach(citation => {
+          const hasRange = citation.work_id && citation.measure_start !== null;
+          const range = hasRange
+            ? ` — mm. ${citation.measure_start}–${citation.measure_end}`
+            : "";
+          const serialized = encodeURIComponent(JSON.stringify(citation));
 
           segmentsHtml += `
-            <div class="segment-card" onclick="handleCardClick('${serializedSeg}')">
+            <div class="segment-card"${hasRange ? ` onclick="handleCardClick('${serialized}')"` : ` style="cursor:default"`}>
               <div class="segment-card-header">
-                <span>${seg.title || ''}${seg.opus ? `, ${seg.opus}` : ''} — mm. ${seg.measure_start}–${seg.measure_end}</span>
-                <span style="font-size: 0.7rem; color: var(--accent)">${statusText}</span>
+                <span>${citation.tool.replace(/_tool$/, "")}${range}</span>
+                <span style="font-size: 0.7rem; color: var(--accent)">${hasRange ? "Click to view in score" : (citation.label || "")}</span>
               </div>
-              <div class="segment-card-body">
-                <strong>Key</strong>: ${seg.local_key} | 
-                <strong>Progression</strong>: <em>${seg.roman_numerals || 'Undetermined'}</em> <br/>
-                ${seg.summary_text}
-              </div>
+              <div class="segment-card-body">${citation.detail}</div>
             </div>
           `;
         });
@@ -833,7 +913,7 @@
       msgDiv.innerHTML = `
         <div class="message-bubble" style="display:flex; align-items:center; gap:0.75rem;">
           <div class="spinner"></div>
-          <span>Retrieving score details and generating answer...</span>
+          <span>Consulting stored analysis and generating answer...</span>
         </div>
       `;
       messagesContainer.appendChild(msgDiv);
@@ -847,10 +927,10 @@
     }
 
     // Card Click Handler
-    function handleCardClick(serializedSeg) {
-      const seg = JSON.parse(decodeURIComponent(serializedSeg));
-      const label = `${seg.composer} — ${seg.title}${seg.opus ? `, ${seg.opus}` : ""}`;
-      loadWorkIntoViewer(seg.work_id, label, seg.measure_start, seg.measure_end);
+    function handleCardClick(serializedCitation) {
+      const citation = JSON.parse(decodeURIComponent(serializedCitation));
+      loadWorkIntoViewer(citation.work_id, citation.label,
+                         citation.measure_start, citation.measure_end);
     }
 
     // Load a work's full score into Verovio (fetching + caching its MEI as

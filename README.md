@@ -45,17 +45,17 @@ citation** — a claim with no supporting call under it is one to distrust.
 
 ## How the model reaches the corpus
 
-Two paths exist, and they are not equivalent.
+**Tool calling** (`ask.py`, `GET /api/ask`, and the web client) is how an answer
+is built. `pipeline/tools.py` binds six functions from
+`pipeline/analysis_api.py` — `resolve_work`, `describe_span`,
+`find_recurrences`, `compare_spans`, `get_key_plan`, `locate_in_form` — which
+read stored analysis directly. **No embeddings are involved.** The client
+renders the returned trace as citation cards under the answer, and opens the
+score at the first bar range the calls named.
 
-**Tool calling** (`ask.py`, `GET /api/ask`) is the real one. `pipeline/tools.py`
-binds six functions from `pipeline/analysis_api.py` — `resolve_work`,
-`describe_span`, `find_recurrences`, `compare_spans`, `get_key_plan`,
-`locate_in_form` — which read stored analysis directly. **No embeddings are
-involved.**
-
-**Retrieval** (`GET /api/chat`, the Streamlit app, the score viewer's chat box)
-is the older path: `pipeline/chat.py` → `pipeline/retrieval.py` → pgvector
-cosine search over `score_segments`.
+**Retrieval** (`GET /api/chat`, the Streamlit app) is the older path:
+`pipeline/chat.py` → `pipeline/retrieval.py` → pgvector cosine search over
+`score_segments`. Nothing in `frontend/` uses it any more.
 
 ### What is actually vectorised
 
@@ -66,8 +66,8 @@ exactly, as JSONB in `score_measures.symbolic_data`, and queried as data.
 Neither headline question is a retrieval problem: in "describe mm. x–y" the
 measures are *given*, so there is nothing to search for, and "find recurring
 material" is an edge in `span_relations` that a vector search over prose cannot
-reach. The retrieval path remains because the web client is still written
-against it.
+reach. Now that no client depends on it, whether the vector layer stays at all
+is an open question rather than an inherited fact.
 
 ## Data model
 
