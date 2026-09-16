@@ -540,10 +540,31 @@ def load_work_features(work_id: int, part_index: int = 0) -> list[dict]:
                 "measure_belongs_to": measure.measure_belongs_to,
                 "pitch_classes": pitch_classes,
                 "rhythm": rhythm,
-                "total_duration": sum(rhythm),
+                # The bar's span, not the sum of its events: two voices
+                # sounding together do not make the measure twice as long.
+                "total_duration": measure_span(measure.symbolic_data),
                 "local_key": (analysis_data or {}).get("local_key"),
             })
         return features
+
+
+def measure_span(symbolic_data: dict) -> float:
+    """How long a measure actually is, in quarter notes.
+
+    The span from its start to its last-ending event -- `max(offset + duration)`
+    -- and emphatically not the sum of its event durations. Summing counts
+    simultaneous voices twice over: a divided staff in Op. 111's Arietta sums
+    to 3.0 in a bar 1.5 long, which made two complete bars look like fragments
+    and classified them as unbarred. A measure is as long as the music sounding
+    in it, however many voices share it.
+    """
+    longest = 0.0
+    for part in symbolic_data.get("parts", []):
+        for event in part.get("events", []):
+            end = (_parse_quarter_length(event["offset"])
+                   + _parse_quarter_length(event["duration"]["quarter_length"]))
+            longest = max(longest, end)
+    return longest
 
 
 def get_measure_shapes(work_id: int) -> list[tuple[int, int | None, float, float | None]]:
@@ -551,36 +572,40 @@ def get_measure_shapes(work_id: int) -> list[tuple[int, int | None, float, float
     measure -- what `analysis.numbering.assign_roles` needs, read back from the
     database so numbering can be re-derived without re-parsing the .krn.
 
-    The meter is stored only where it changes, so it is forward-filled here the
-    way the harmony pass forward-fills key signatures.
+    The meter comes from the *source*, not from the stored analysis. music21
+    loses meter changes in 3 of the 103 movements -- Op. 111/ii is written
+    9/16, 6/16, 12/32, 9/16 and only the opening 9/16 survives the parse -- and
+    a stale bar length does not merely mislabel the metre here: `assign_roles`
+    measures every bar against it, so whole bars in a faster meter read as
+    incomplete and get classified as upbeats.
     """
+    from analysis.humdrum import bar_duration, meter_changes
+
+    source = get_source_text(work_id) or ""
+    meters = meter_changes(source)
+    boundaries = sorted(meters)
+
     shapes: list[tuple[int, int | None, float, float | None]] = []
-    bar_duration: float | None = None
+    current: float | None = None
     with session_scope() as session:
-        rows = (
-            session.query(ScoreMeasure, MeasureAnalysis)
-            .outerjoin(MeasureAnalysis, MeasureAnalysis.measure_id == ScoreMeasure.id)
+        measures = (
+            session.query(ScoreMeasure)
             .filter(ScoreMeasure.work_id == work_id)
-            .order_by(ScoreMeasure.measure_index, MeasureAnalysis.id.desc())
+            .order_by(ScoreMeasure.measure_index)
             .all()
         )
-        seen: set[int] = set()
-        for measure, analysis in rows:
-            if measure.measure_index in seen:
-                continue
-            seen.add(measure.measure_index)
-            signature = (analysis.analysis_data or {}).get("time_signature") if analysis else None
-            if signature:
-                bar_duration = _bar_duration(signature) or bar_duration
-            duration = 0.0
-            for part in measure.symbolic_data.get("parts", []):
-                part_duration = sum(
-                    _parse_quarter_length(event["duration"]["quarter_length"])
-                    for event in part.get("events", [])
-                )
-                duration = max(duration, part_duration)
-            shapes.append((measure.measure_index, measure.measure_number or None,
-                           duration, bar_duration))
+        for measure in measures:
+            number = measure.measure_number or None
+            if number is not None:
+                # The meter in force at this bar: the last change at or before
+                # it. A measure with no number of its own keeps what it follows.
+                applicable = [b for b in boundaries if b <= number]
+                if applicable:
+                    current = bar_duration(meters[applicable[-1]]) or current
+            elif current is None and meters:
+                current = bar_duration(meters[boundaries[0]])
+            shapes.append((measure.measure_index, number,
+                           measure_span(measure.symbolic_data), current))
     return shapes
 
 
@@ -648,6 +673,7 @@ def get_stored_measures(work_id: int) -> list[dict]:
             seen.add(measure.measure_index)
             measures.append({
                 "measure_index": measure.measure_index,
+                "measure_number": measure.measure_number,
                 "symbolic_data": measure.symbolic_data,
                 "analysis_id": analysis.id if analysis else None,
                 "analysis_data": dict(analysis.analysis_data) if analysis else {},

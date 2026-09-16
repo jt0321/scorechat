@@ -110,3 +110,37 @@ def test_no_measure_ever_resolves_to_zero():
     assert all(r.measure_number != 0 for r in result)
     assert all(r.belongs_to != 0 for r in result)
     assert resolve_range(result, 0, 2)["measure_start"] == 1
+
+
+# --- how long a measure is --------------------------------------------------
+
+def test_a_measure_is_as_long_as_its_span_not_the_sum_of_its_events():
+    """Two voices sounding together do not make the measure twice as long.
+    Summing durations made a divided staff in Op. 111's Arietta total 3.0 in a
+    bar 1.5 long, so two complete bars were classified as unbarred."""
+    from db.store import measure_span
+    divided = {"parts": [{"events": [
+        {"offset": "0.0", "duration": {"quarter_length": "1.5"}},          # upper voice
+        {"offset": "0.0", "duration": {"quarter_length": "0.75"}},         # lower voice
+        {"offset": "0.75", "duration": {"quarter_length": "0.75"}},
+    ]}]}
+    assert measure_span(divided) == 1.5
+
+
+def test_span_spans_every_part():
+    from db.store import measure_span
+    data = {"parts": [
+        {"events": [{"offset": "0.0", "duration": {"quarter_length": "1.0"}}]},
+        {"events": [{"offset": "0.0", "duration": {"quarter_length": "4.0"}}]},
+    ]}
+    assert measure_span(data) == 4.0
+
+
+def test_a_whole_bar_in_a_faster_meter_is_not_an_upbeat():
+    """The rule needs the meter that is actually in force. A 1.5-beat measure
+    is a whole bar in 6/16 and an incomplete one in 9/16, and reading a stale
+    9/16 across Op. 111/ii invented anacruses out of complete bars."""
+    in_six_sixteen = assign_roles(rows((36, 1.5, 1.5), (None, 1.5, 1.5), (37, 1.5, 1.5)))
+    assert in_six_sixteen[1].role == UNBARRED     # a whole bar, merely unnumbered
+    in_nine_sixteen = assign_roles(rows((36, 0.75, 2.25), (None, 1.5, 2.25), (37, 2.25, 2.25)))
+    assert in_nine_sixteen[1].role == UPBEAT      # 0.75 + 1.5 makes one 9/16 bar

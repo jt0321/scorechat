@@ -27,6 +27,7 @@ HUMDRUM_SOURCE_VERSION = "1.0"
 
 _DECLARED_KEY = re.compile(r"^\*([a-gA-G])([#-]?):\s*$")
 _BARLINE = re.compile(r"^=+(\d+)")
+_METER = re.compile(r"^\*M(\d+)/(\d+)$")
 
 # Humdrum spells a key with a letter case that carries the mode -- lower case
 # is minor -- and "-" for a flat, which is how the corpus writes D-flat major
@@ -136,3 +137,59 @@ def declared_key(source_text: str) -> str | None:
                 tonic = letter.upper() + accidental
                 return f"{tonic.lower()} minor" if letter.islower() else f"{tonic} major"
     return None
+
+
+def meter_changes(source_text: str) -> dict[int, str]:
+    """Printed bar number -> the time signature that starts there.
+
+    music21 loses these for the movements that need them most. Op. 111's
+    Arietta is written 9/16, 6/16, 12/32, 9/16 as the variations subdivide the
+    beat; only the opening 9/16 survived the parse, so every later bar was
+    measured against a bar length half again too long and read as incomplete.
+    Op. 110/iii and Op. 53/iii lose changes the same way -- 3 of 103 movements,
+    all of them places where the meter is doing something worth reading.
+
+    A bar length is what tells an upbeat from a whole bar in a faster meter
+    (`analysis/numbering.py`), so a stale meter does not merely mislabel the
+    metre: it invents anacruses.
+    """
+    meters: dict[int, str] = {}
+    measure = 0
+    pending: str | None = None
+    for _, line, types, tokens in spine_layout(source_text):
+        if line.startswith("!"):
+            continue
+        if line.startswith("=") and tokens:
+            match = _BARLINE.match(tokens[0])
+            if match:
+                measure = int(match.group(1))
+                if pending is not None:
+                    meters[measure] = pending
+                    pending = None
+            continue
+        if line.startswith("*") and not line.startswith("**"):
+            for token in tokens:
+                match = _METER.match(token)
+                if match:
+                    signature = f"{match.group(1)}/{match.group(2)}"
+                    # A meter written before the first barline belongs to the
+                    # opening measure; one written after a barline has already
+                    # been passed applies from that bar.
+                    if measure:
+                        meters[measure] = signature
+                    else:
+                        pending = signature
+                        meters[0] = signature
+                    break
+    return meters
+
+
+def bar_duration(time_signature: str | None) -> float | None:
+    """Quarter-note length of one bar, e.g. "6/16" -> 1.5."""
+    if not time_signature:
+        return None
+    try:
+        beats, unit = time_signature.split("/")
+        return int(beats) * 4.0 / int(unit)
+    except (ValueError, ZeroDivisionError):
+        return None

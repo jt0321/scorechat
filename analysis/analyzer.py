@@ -14,7 +14,7 @@ import music21
 from music21 import converter, analysis, key as key_module, meter, stream, roman
 
 from analysis.harmony import HARMONY_ANALYSIS_VERSION, analyze_harmony
-from analysis.humdrum import declared_key
+from analysis.humdrum import declared_key, meter_changes
 from analysis.numbering import BAR, assign_roles
 
 
@@ -395,6 +395,24 @@ def build_symbolic_layers(score_path: str) -> tuple[list[CanonicalMeasure], list
                 "texture_scope": "primary_part_measure",
             },
         ))
+
+    # music21 loses meter changes in 3 of the 103 movements -- Op. 111/ii is
+    # written 9/16, 6/16, 12/32, 9/16 and only the opening 9/16 survives. The
+    # source states every one of them, so stamp them from there.
+    if source_text:
+        meters = meter_changes(source_text)
+        if meters:
+            boundaries = sorted(meters)
+            current = None
+            for canonical, analysis_item in zip(canonical_measures, measure_analyses):
+                number = canonical.measure_number
+                if number:
+                    applicable = [b for b in boundaries if b <= number]
+                    if applicable:
+                        current = meters[applicable[-1]]
+                elif current is None:
+                    current = meters[boundaries[0]]
+                analysis_item.analysis_data["time_signature"] = current
 
     # A measure the importer did not number is not a parse failure: an
     # anacrusis, the pickup written after a repeat barline, and an unbarred

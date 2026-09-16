@@ -12,7 +12,9 @@ data. These pin the tracking rules.
 
 import pytest
 
-from analysis.humdrum import _apply, declared_key, iter_tokens, spine_layout
+from analysis.humdrum import (
+    _apply, bar_duration, declared_key, iter_tokens, meter_changes, spine_layout,
+)
 
 
 def krn(*lines):
@@ -122,3 +124,37 @@ def test_every_movement_in_the_corpus_declares_its_key():
         pytest.skip("corpus not downloaded")
     missing = [f.name for f in files if declared_key(f.read_text(encoding="utf-8")) is None]
     assert missing == []
+
+
+# --- meter ------------------------------------------------------------------
+
+def test_a_meter_before_the_first_barline_belongs_to_the_opening_measure():
+    source = krn("**kern", "*M9/16", "=1", "4c", "=2", "4d")
+    assert meter_changes(source)[1] == "9/16"
+
+
+def test_a_meter_after_a_barline_applies_from_that_bar():
+    source = krn("**kern", "*M9/16", "=1", "4c", "=36", "*M6/16", "4d")
+    assert meter_changes(source) == {0: "9/16", 1: "9/16", 36: "6/16"}
+
+
+def test_every_change_is_kept_not_only_the_first():
+    """Op. 111's Arietta is written 9/16, 6/16, 12/32, 9/16 as the variations
+    subdivide the beat. music21 keeps only the opening 9/16, which measures
+    every later bar against a bar half again too long."""
+    from pathlib import Path
+    path = Path("data/sonata32-2.krn")
+    if not path.exists():
+        pytest.skip("corpus not downloaded")
+    assert list(meter_changes(path.read_text(encoding="utf-8")).values()) == [
+        "9/16", "9/16", "6/16", "12/32", "9/16",
+    ]
+
+
+def test_bar_duration_is_in_quarter_notes():
+    assert bar_duration("4/4") == 4.0
+    assert bar_duration("9/16") == 2.25
+    assert bar_duration("6/16") == 1.5
+    assert bar_duration("12/32") == 1.5      # the same length, subdivided finer
+    assert bar_duration(None) is None
+    assert bar_duration("nonsense") is None

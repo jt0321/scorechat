@@ -20,7 +20,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 from analysis.harmony import HARMONY_ANALYSIS_VERSION, analyze_harmony
-from analysis.humdrum import declared_key
+from analysis.humdrum import declared_key, meter_changes
 from db.store import (
     get_source_text, get_stored_measures, list_works, store_harmony,
 )
@@ -40,7 +40,22 @@ def main(work_id: int | None, dry_run: bool):
         measures = get_stored_measures(work["id"])
         if not measures:
             continue
-        source_key = declared_key(get_source_text(work["id"]) or "")
+        source_text = get_source_text(work["id"]) or ""
+        source_key = declared_key(source_text)
+        # The meter drives chord-window segmentation, and the stored one is
+        # missing changes for the three movements that change meter most.
+        meters = meter_changes(source_text)
+        if meters:
+            boundaries = sorted(meters)
+            current = None
+            for measure in measures:
+                number = measure["measure_number"]
+                applicable = [b for b in boundaries if b <= (number or 0)]
+                if number and applicable:
+                    current = meters[applicable[-1]]
+                elif current is None:
+                    current = meters[boundaries[0]]
+                measure["analysis_data"]["time_signature"] = current
         if source_key is None:
             undeclared.append(f"{work['opus']}/{work['movement_number']}")
 
@@ -73,6 +88,10 @@ def main(work_id: int | None, dry_run: bool):
             estimate = by_index.get(index)
             updates[index] = {
                 "harmony_version": HARMONY_ANALYSIS_VERSION,
+                # Stored on every measure, not only where it changes. The
+                # sparse form required every consumer to forward-fill, and the
+                # changes music21 dropped were invisible in it.
+                "time_signature": measure["analysis_data"].get("time_signature"),
                 "global_key": source_key or (trajectory[0].key if trajectory else None),
                 "local_key": estimate.key if estimate else None,
                 "local_key_scope": "windowed_viterbi",
