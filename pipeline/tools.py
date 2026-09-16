@@ -187,18 +187,24 @@ def _tool_result(call: dict) -> ToolMessage:
     return ToolMessage(content=payload, tool_call_id=call["id"])
 
 
-def answer(question: str, model: str | None = None) -> dict:
+def answer(question: str, model: str | None = None, provider: str | None = None) -> dict:
     """Answer one question, running whatever tool calls the model asks for.
 
     Returns the prose answer plus the full trace of tool calls, because the
     trace *is* the citation: it shows which stored analysis the answer rests
     on, and a claim with no supporting call in the trace is one to distrust.
-    """
-    if not chat_provider_ready():
-        return {"answer": None, "trace": [],
-                "error": "No chat provider is configured; set CHAT_PROVIDER and its API key."}
 
-    llm = get_chat_model(model=model, temperature=0.2).bind_tools(TOOLS)
+    `provider` picks a backend for this question alone, leaving CHAT_PROVIDER
+    as the default; the caller passes a name, never a key. A provider whose
+    model cannot call tools will answer with an empty trace, which is the
+    signal to distrust the answer rather than a failure to report here.
+    """
+    if not chat_provider_ready(provider):
+        which = provider or "the configured provider"
+        return {"answer": None, "trace": [],
+                "error": f"No API key is configured for {which}; see .env.example."}
+
+    llm = get_chat_model(model=model, temperature=0.2, provider=provider).bind_tools(TOOLS)
     messages = [SystemMessage(content=SYSTEM_PROMPT), HumanMessage(content=question)]
     trace: list[dict] = []
 

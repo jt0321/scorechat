@@ -85,6 +85,34 @@ python server.py                     # viewer + API at localhost:8000
 An existing database needs the migrations in `db/migrations/` applied in order;
 `CLAUDE.md` lists them.
 
+## Model providers
+
+`CHAT_PROVIDER` picks the default backend; any provider whose keys are present
+is also selectable per question from the picker in the web client, which passes
+a provider *name* to `/api/ask`. Keys stay server-side and never reach the
+browser. `GET /api/providers` is what the picker is built from — each provider
+with the env vars it needs and whether they are set.
+
+| provider | key(s) | free tier |
+|---|---|---|
+| `openai` | `OPENAI_API_KEY` | no |
+| `anthropic` | `ANTHROPIC_API_KEY` | no |
+| `gemini` | `GEMINI_API_KEY` | yes |
+| `openrouter` | `OPENROUTER_API_KEY` | yes — model slugs ending `:free` |
+| `cloudflare` | `CLOUDFLARE_API_KEY` + `CLOUDFLARE_ACCOUNT_ID` | yes — Workers AI |
+| `ollama` | none (`OLLAMA_BASE_URL`) | local |
+
+OpenRouter and Cloudflare are OpenAI-compatible endpoints, so they need no
+package beyond `langchain-openai`; Anthropic, Gemini and Ollama each need their
+extra (`uv pip install -e ".[gemini]"`). Cloudflare needs the account id as
+well as the key because the account is part of the URL.
+
+**The model has to support tool calling.** That is how ScoreChat answers at
+all, so a model without it returns prose with an empty trace — nothing backing
+the claims. Defaults are chosen for it: `nvidia/nemotron-3-super-120b-a12b:free`
+on OpenRouter, `@cf/meta/llama-3.3-70b-instruct-fp8-fast` on Workers AI. Free
+catalogues churn, so set `CHAT_MODEL` when a default slug disappears.
+
 ## What it answers
 
 Two shapes of question, both served by the same engine:

@@ -40,6 +40,17 @@ class ScoreChatHandler(SimpleHTTPRequestHandler):
     def do_GET(self):
         parsed_url = urllib.parse.urlparse(self.path)
 
+        # Which chat providers this deployment can actually use. The picker in
+        # the client is built from this: a name and whether its credentials are
+        # present, never the credentials themselves.
+        if parsed_url.path == "/api/providers":
+            try:
+                from pipeline.providers import chat_provider_options
+                self._send_json(200, {"providers": chat_provider_options()})
+            except Exception as e:
+                self._send_json(500, {"error": str(e)})
+            return
+
         # List all ingested works (for the sidebar work picker)
         if parsed_url.path == "/api/works":
             try:
@@ -115,9 +126,19 @@ class ScoreChatHandler(SimpleHTTPRequestHandler):
             if not question:
                 self._send_json(400, {"error": "Missing question parameter"})
                 return
+            provider = query_params.get("provider", [""])[0] or None
+            model = query_params.get("model", [""])[0] or None
             try:
+                from pipeline.providers import CHAT_PROVIDERS
                 from pipeline.tools import answer
-                self._send_json(200, answer(question))
+                if provider and provider not in CHAT_PROVIDERS:
+                    # Named rather than silently ignored: falling back to the
+                    # env default would answer with a model the user did not
+                    # pick and give no sign of it.
+                    self._send_json(400, {"error": f"Unknown provider '{provider}'. "
+                                                   f"Supported: {', '.join(CHAT_PROVIDERS)}."})
+                    return
+                self._send_json(200, answer(question, model=model, provider=provider))
             except Exception as e:
                 self._send_json(500, {"error": str(e)})
             return

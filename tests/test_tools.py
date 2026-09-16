@@ -41,7 +41,7 @@ def stub(monkeypatch):
     def install(replies):
         model = StubModel(replies)
         monkeypatch.setattr(tools, "get_chat_model", lambda **kwargs: model)
-        monkeypatch.setattr(tools, "chat_provider_ready", lambda: True)
+        monkeypatch.setattr(tools, "chat_provider_ready", lambda *a, **k: True)
         return model
     return install
 
@@ -113,9 +113,23 @@ def test_an_endless_caller_is_cut_off_with_an_answer(stub, monkeypatch):
 
 
 def test_no_provider_is_an_error_rather_than_a_fabricated_answer(monkeypatch):
-    monkeypatch.setattr(tools, "chat_provider_ready", lambda: False)
+    monkeypatch.setattr(tools, "chat_provider_ready", lambda *a, **k: False)
     result = tools.answer("anything")
-    assert result["answer"] is None and "No chat provider" in result["error"]
+    assert result["answer"] is None and "No API key" in result["error"]
+
+
+def test_a_picked_provider_is_named_in_the_error_and_passed_to_the_model(monkeypatch):
+    """Picking a provider whose key is missing must say which one: the whole
+    point of the picker is that the user chose it, so falling back silently to
+    the env default would answer from a model they did not choose."""
+    monkeypatch.setattr(tools, "chat_provider_ready", lambda provider=None: provider != "cloudflare")
+    assert "cloudflare" in tools.answer("anything", provider="cloudflare")["error"]
+
+    seen = {}
+    monkeypatch.setattr(tools, "get_chat_model",
+                        lambda **kwargs: seen.update(kwargs) or StubModel([AIMessage(content="ok")]))
+    tools.answer("anything", provider="openrouter", model="some/model:free")
+    assert seen["provider"] == "openrouter" and seen["model"] == "some/model:free"
 
 
 def test_content_blocks_are_flattened_to_text():

@@ -285,6 +285,29 @@
       border-top: 1px solid var(--border);
     }
 
+    .provider-row {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.6rem;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+    }
+
+    .provider-row select {
+      background: rgba(0, 0, 0, 0.2);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 0.25rem 0.4rem;
+      font-family: inherit;
+      font-size: 0.75rem;
+    }
+
+    .provider-row select option:disabled {
+      color: var(--text-muted);
+    }
+
     .input-wrapper {
       display: flex;
       gap: 0.75rem;
@@ -578,6 +601,13 @@
       
       <!-- Input Panel -->
       <div id="chat-input-container">
+        <div class="provider-row">
+          <label for="provider-select">Model</label>
+          <select id="provider-select" onchange="rememberProvider()">
+            <option value="">Server default</option>
+          </select>
+          <span id="provider-note"></span>
+        </div>
         <form id="chat-form" onsubmit="handleQuerySubmit(event)">
           <div class="input-wrapper">
             <input type="text" id="query-input" placeholder="Ask about Op. 111 (e.g., 'opening tempo' or 'harmony of mm. 1-4')..." autocomplete="off">
@@ -700,7 +730,44 @@
         console.error("Verovio library not found. Verify network connection.");
       }
       loadWorksList();
+      loadProviders();
     });
+
+    // Fill the model picker from what the server says it can actually use. A
+    // provider whose keys are missing is shown disabled rather than hidden, so
+    // the answer to "why can't I pick Gemini?" is on screen: it needs a key.
+    async function loadProviders() {
+      const selectEl = document.getElementById("provider-select");
+      const noteEl = document.getElementById("provider-note");
+      try {
+        const res = await fetch("/api/providers");
+        const data = await res.json();
+        const remembered = localStorage.getItem("scorechat.provider") || "";
+
+        (data.providers || []).forEach(p => {
+          const option = document.createElement("option");
+          option.value = p.id;
+          option.disabled = !p.ready;
+          option.textContent = `${p.label}${p.selected ? " — server default" : ""}`
+            + (p.ready ? ` · ${p.default_model}` : ` · needs ${p.requires.join(" + ")}`);
+          selectEl.appendChild(option);
+        });
+
+        const usable = [...selectEl.options].some(o => o.value === remembered && !o.disabled);
+        if (usable) selectEl.value = remembered;
+        noteEl.textContent = (data.providers || []).some(p => p.ready)
+          ? ""
+          : "No provider has a key configured — see .env.example.";
+      } catch (err) {
+        noteEl.textContent = `Could not load providers: ${err.message}`;
+      }
+    }
+
+    function rememberProvider() {
+      try {
+        localStorage.setItem("scorechat.provider", document.getElementById("provider-select").value);
+      } catch (err) { /* private windows refuse storage; the picker still works */ }
+    }
 
     // Fetch ingested works and populate the sidebar
     async function loadWorksList() {
@@ -754,7 +821,9 @@
       const loaderId = appendLoadingMessage();
 
       try {
-        const response = await fetch(`/api/ask?question=${encodeURIComponent(query)}`);
+        const provider = document.getElementById("provider-select").value;
+        const response = await fetch(`/api/ask?question=${encodeURIComponent(query)}`
+          + (provider ? `&provider=${encodeURIComponent(provider)}` : ""));
         if (!response.ok) throw new Error("Server error");
 
         const data = await response.json();
