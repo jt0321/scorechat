@@ -148,7 +148,14 @@ this the recapitulation?" wants the recurrences, the repeat scheme and the key
 plan, not one of the three.
 
 Measure numbering is printed/engraved numbering, the numbering a performer
-reads and the user types. Bar 1 is the first complete measure. Some measures
+reads and the user types. Bar numbers belong to an *edition*: these are
+transcribed from Durand 1915 (Paul Dukas, ed.), a performing edition, and
+`reference_edition` on a resolved work says so. Where a repeat has first and
+second endings, an urtext such as Henle numbers both endings from the same bar
+(69 and 69b), while this edition numbers them straight through — so from the
+second ending onward our numbers run ahead of an urtext's, by up to ten bars
+in the movements that repeat most. When a bar number matters to the user and
+the movement has alternate endings, say which edition the number is from. Bar 1 is the first complete measure. Some measures
 are part of the score without being bars -- an anacrusis, the upbeat written
 after a repeat barline, an unbarred cadenza -- and they have no number. When a
 range is flagged as opening on a pickup, say "from the upbeat to m. N"; never

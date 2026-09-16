@@ -26,12 +26,13 @@ import re
 import unicodedata
 from typing import Any
 
+from analysis.humdrum import reference_edition
 from analysis.span_relations import (
     WorkFeatures, check_repeats, check_varies, transposition_interval,
 )
 from db.store import (
-    get_measure_evidence, get_notated_sections, get_span_relations, list_works,
-    load_work_features,
+    get_measure_evidence, get_notated_sections, get_source_text,
+    get_span_relations, list_works, load_work_features,
 )
 
 MAX_EVIDENCE_MEASURES = 24
@@ -172,8 +173,14 @@ def resolve_work(query: str, limit: int = 5) -> dict:
 
 
 def _work_summary(work: dict) -> dict:
+    # The edition is part of the answer, not trivia: bar numbers belong to an
+    # edition, and this corpus is transcribed from a performing edition whose
+    # numbering parts company with an urtext wherever a repeat has first and
+    # second endings.
+    edition = reference_edition(get_source_text(work["id"]) or "")
     return {
         "work_id": work["id"],
+        "reference_edition": edition,
         "composer": work["composer"],
         "title": work["title"],
         "opus": work.get("opus"),

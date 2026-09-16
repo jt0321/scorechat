@@ -28,6 +28,7 @@ HUMDRUM_SOURCE_VERSION = "1.0"
 _DECLARED_KEY = re.compile(r"^\*([a-gA-G])([#-]?):\s*$")
 _BARLINE = re.compile(r"^=+(\d+)")
 _METER = re.compile(r"^\*M(\d+)/(\d+)$")
+_REFERENCE = re.compile(r"^!!!(LOR|PED|EED):\s*(.+?)\s*$")
 
 # Humdrum spells a key with a letter case that carries the mode -- lower case
 # is minor -- and "-" for a flat, which is how the corpus writes D-flat major
@@ -193,3 +194,22 @@ def bar_duration(time_signature: str | None) -> float | None:
         return int(beats) * 4.0 / int(unit)
     except (ValueError, ZeroDivisionError):
         return None
+
+
+def reference_edition(source_text: str) -> str | None:
+    """The printed edition this encoding was transcribed from (`!!!LOR`).
+
+    Worth surfacing rather than burying, because bar numbers are an *edition's*
+    numbers, not the music's. 102 of the 103 movements here come from Durand
+    1915, edited by Paul Dukas -- a performing edition, not an urtext -- and a
+    reader holding Henle will find its numbering diverges wherever a repeat has
+    first and second endings, which is 36 of the movements. The dynamics in the
+    `**dynam` spine are that editor's too.
+    """
+    for line in source_text.splitlines():
+        if not line.startswith("!!!"):
+            continue
+        match = _REFERENCE.match(line)
+        if match and match.group(1) == "LOR":
+            return match.group(2)
+    return None
