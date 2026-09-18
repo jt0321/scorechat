@@ -23,9 +23,14 @@ which is the one output this project treats as untrustworthy. The defaults
 below are picked for that, and free catalogues churn -- OpenRouter's free slugs
 come and go, so `CHAT_MODEL` is the escape hatch when a default disappears.
 
-There are no embedding backends here any more: nothing in ScoreChat is
-retrieved by similarity, so no text is embedded and no provider has to be
-chosen for it.
+Embedding providers are listed here too, and embed only one thing: the prose
+of the commentary texts. Score content is never embedded -- it is queried as
+data. The two kinds of choice differ in scope. A chat model is chosen per
+question; an embedding model is chosen per *corpus*, because a query has to be
+embedded by the same model as the passages it is compared with. So embeddings
+are stored per model (`passage_embeddings.model`, "provider:model"), several
+can coexist, and a search can only use a model the corpus has been embedded
+with. Every provider below has a free tier.
 """
 
 from __future__ import annotations
@@ -187,3 +192,83 @@ def get_chat_model(model: str | None = None, temperature: float = 0.3,
     raise ValueError(
         f"Unknown CHAT_PROVIDER '{provider}'. Supported: {', '.join(CHAT_PROVIDERS)}."
     )
+
+
+# --- embeddings: commentary prose only ----------------------------------------------
+
+# Defaults verified against each provider in September 2026. OpenAI-compatible
+# endpoints get `check_embedding_ctx_length=False`: otherwise langchain-openai
+# tokenises locally with tiktoken and sends token ids, which only OpenAI accepts.
+EMBEDDING_PROVIDERS = {
+    "gemini": {
+        "label": "Google Gemini",
+        "default_model": "gemini-embedding-2",
+        "requires": ["GEMINI_API_KEY"],
+    },
+    "openrouter": {
+        "label": "OpenRouter (free tier)",
+        "default_model": "nvidia/nemotron-3-embed-1b:free",
+        "requires": ["OPENROUTER_API_KEY"],
+    },
+    "cloudflare": {
+        "label": "Cloudflare Workers AI (free tier)",
+        "default_model": "@cf/baai/bge-base-en-v1.5",
+        "requires": ["CLOUDFLARE_API_KEY", "CLOUDFLARE_ACCOUNT_ID"],
+    },
+    "ollama": {
+        "label": "Ollama (local)",
+        "default_model": "nomic-embed-text",
+        "requires": [],
+    },
+    "openai": {
+        "label": "OpenAI",
+        "default_model": "text-embedding-3-small",
+        "requires": ["OPENAI_API_KEY"],
+    },
+}
+
+
+def parse_embedding_model(spec: str) -> tuple[str, str]:
+    """"gemini" or "gemini:gemini-embedding-2" -> ("gemini", "gemini-embedding-2")."""
+    provider, _, model = spec.partition(":")
+    provider = provider.lower()
+    if provider not in EMBEDDING_PROVIDERS:
+        raise ValueError(f"Unknown embedding provider '{provider}'. "
+                         f"Supported: {', '.join(EMBEDDING_PROVIDERS)}.")
+    return provider, model or EMBEDDING_PROVIDERS[provider]["default_model"]
+
+
+def embedding_model_id(spec: str) -> str:
+    """The name embeddings are stored under: always "provider:model", so the
+    same model reached two ways ("gemini" and "gemini:gemini-embedding-2") is
+    one set of vectors, not two."""
+    provider, model = parse_embedding_model(spec)
+    return f"{provider}:{model}"
+
+
+def embedding_provider_ready(spec: str) -> bool:
+    provider, _ = parse_embedding_model(spec)
+    return all(not _is_placeholder(os.environ.get(var, ""))
+               for var in EMBEDDING_PROVIDERS[provider]["requires"])
+
+
+def get_embeddings(spec: str):
+    """A LangChain embeddings model for "provider[:model]"."""
+    provider, model = parse_embedding_model(spec)
+    if provider == "gemini":
+        from langchain_google_genai import GoogleGenerativeAIEmbeddings
+        return GoogleGenerativeAIEmbeddings(model=model, google_api_key=os.environ["GEMINI_API_KEY"])
+    if provider == "ollama":
+        from langchain_ollama import OllamaEmbeddings
+        return OllamaEmbeddings(model=model, base_url=os.environ.get("OLLAMA_BASE_URL"))
+
+    from langchain_openai import OpenAIEmbeddings
+    if provider == "openai":
+        return OpenAIEmbeddings(model=model, api_key=os.environ["OPENAI_API_KEY"])
+    if provider == "openrouter":
+        return OpenAIEmbeddings(model=model, api_key=os.environ["OPENROUTER_API_KEY"],
+                                base_url=OPENROUTER_BASE_URL, check_embedding_ctx_length=False)
+    account = os.environ["CLOUDFLARE_ACCOUNT_ID"]
+    return OpenAIEmbeddings(model=model, api_key=os.environ["CLOUDFLARE_API_KEY"],
+                            base_url=f"https://api.cloudflare.com/client/v4/accounts/{account}/ai/v1",
+                            check_embedding_ctx_length=False)

@@ -79,6 +79,7 @@ python ingest_scores.py                      # parse, encode, analyse, store
 python build_sections.py && python build_relations.py
 python fetch_sources.py                      # commentary texts (not in the repo; pinned by checksum)
 python ingest_commentary.py                  # passages anchored to sonata and movement
+python embed_commentary.py --model gemini    # optional: vector search over the commentary
 
 python ask.py "where is the recapitulation in the Moonlight finale?"
 python server.py                     # viewer + API at localhost:8000
@@ -137,14 +138,21 @@ phrase the result. `ask.py`, `GET /api/ask` and the web client all go through
 it, and the client renders the returned trace as citation cards under the
 answer, opening the score at the first bar range the calls named.
 
-**Nothing is embedded and nothing is retrieved by similarity.** There used to
-be a second path — 4,519 prose summaries of measure windows in a
-`score_segments` table, searched with pgvector — and it was removed, because
-neither shape of question is a retrieval problem: in "describe mm. x–y" the
-measures are *given*, so there is nothing to search for, and "find recurring
-material" is an edge in `span_relations` that a similarity search over prose
-cannot reach. The score is stored exactly, as JSONB in
+**The score is never embedded.** There used to be a vector layer over it —
+4,519 prose summaries of measure windows in a `score_segments` table — and it
+was removed, because neither shape of question is a retrieval problem: in
+"describe mm. x–y" the measures are *given*, and "find recurring material" is
+an edge in `span_relations`. The score is stored exactly, as JSONB in
 `score_measures.symbolic_data`, and queried as data.
+
+**Commentary is.** Three published texts about the sonatas — Elterlein (1879),
+Marx (1895), Shedlock (1895) — are real prose, where similarity search is the
+right tool. They are fetched rather than committed (`sources/manifest.toml`
+pins each file), read into passages anchored to a sonata and, where the text
+says so, a movement, and searched by full text and by vector, fused. Any
+embedding provider with a free tier will do; the model is a property of the
+corpus, so search uses the one the passages were embedded with. Commentary is
+attributed opinion: it can be quoted beside the score, never written into it.
 
 ## Data model
 
