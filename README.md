@@ -74,7 +74,7 @@ uv pip install -e ".[dev]"
 docker compose up -d                 # postgres
 cp .env.example .env                 # add a provider key
 
-python download_beethoven_piano_sonatas.py   # fetch .krn sources
+git submodule update --init                  # .krn sources (a pinned submodule)
 python ingest_scores.py                      # parse, encode, analyse, store
 python build_sections.py && python build_relations.py
 python fetch_sources.py                      # commentary texts (not in the repo; pinned by checksum)

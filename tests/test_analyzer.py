@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from analysis.analyzer import build_span_candidates, build_symbolic_layers, detect_texture
+from analysis.corpus import KERN_DIR
 
 
 def test_detect_texture_with_music21():
@@ -19,7 +20,7 @@ def test_detect_texture_with_music21():
 
 
 def test_build_symbolic_layers_preserves_events_and_measure_analysis():
-    score_path = Path("data/sonata32-2.krn")
+    score_path = KERN_DIR / "sonata32-2.krn"
     if not score_path.exists():
         pytest.skip("Op. 111 source is not available")
 
@@ -37,7 +38,7 @@ def test_build_symbolic_layers_preserves_events_and_measure_analysis():
 
 
 def test_span_candidates_cover_score_with_score_derived_boundaries():
-    score_path = Path("data/sonata32-2.krn")
+    score_path = KERN_DIR / "sonata32-2.krn"
     if not score_path.exists():
         pytest.skip("Op. 111 source is not available")
 

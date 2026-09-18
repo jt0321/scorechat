@@ -15,6 +15,7 @@ import pytest
 from analysis.humdrum import (
     _apply, bar_duration, declared_key, iter_tokens, meter_changes, spine_layout,
 )
+from analysis.corpus import KERN_DIR
 
 
 def krn(*lines):
@@ -82,7 +83,7 @@ def test_layout_and_token_counts_agree_on_every_line_of_a_real_score():
     """The invariant that makes the tracker trustworthy; it holds across
     175,279 lines of the corpus."""
     from pathlib import Path
-    path = Path("data/sonata08-1.krn")
+    path = KERN_DIR / "sonata08-1.krn"
     if not path.exists():
         pytest.skip("corpus not downloaded")
     for _, line, types, tokens in spine_layout(path.read_text(encoding="utf-8")):
@@ -119,7 +120,7 @@ def test_a_score_declaring_nothing_returns_nothing():
 def test_every_movement_in_the_corpus_declares_its_key():
     """Which is what makes the estimator unnecessary for the home key."""
     from pathlib import Path
-    files = sorted(Path("data").glob("sonata*.krn"))
+    files = sorted(KERN_DIR.glob("sonata*.krn"))
     if not files:
         pytest.skip("corpus not downloaded")
     missing = [f.name for f in files if declared_key(f.read_text(encoding="utf-8")) is None]
@@ -143,7 +144,7 @@ def test_every_change_is_kept_not_only_the_first():
     subdivide the beat. music21 keeps only the opening 9/16, which measures
     every later bar against a bar half again too long."""
     from pathlib import Path
-    path = Path("data/sonata32-2.krn")
+    path = KERN_DIR / "sonata32-2.krn"
     if not path.exists():
         pytest.skip("corpus not downloaded")
     assert list(meter_changes(path.read_text(encoding="utf-8")).values()) == [

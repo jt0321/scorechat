@@ -14,10 +14,11 @@ from analysis.harmony import (
     detect_home_key, estimate_key_trajectory, measure_key_signatures,
     measure_pitch_class_weights, score_all_keys, signature_keys,
 )
+from analysis.corpus import KERN_DIR
 
 
 def _load(name: str):
-    path = Path("data") / name
+    path = KERN_DIR / name
     if not path.exists():
         pytest.skip(f"{name} is not available")
     return build_symbolic_layers(str(path))[0]
@@ -199,7 +200,7 @@ def test_arpeggiated_measure_reads_as_one_chord_not_one_per_note():
     measures = _load("sonata01-1.krn")
     from analysis.analyzer import build_symbolic_layers
     from analysis.harmony import analyze_harmony
-    _, analyses, _ = build_symbolic_layers("data/sonata01-1.krn")
+    _, analyses, _ = build_symbolic_layers(str(KERN_DIR / "sonata01-1.krn"))
     _, spans = analyze_harmony(measures, analyses)
     by_measure = {}
     for span in spans:
@@ -213,7 +214,7 @@ def test_solo_anacrusis_is_left_unlabelled():
     determines no chord, and asserting one would be a fabrication."""
     from analysis.analyzer import build_symbolic_layers
     from analysis.harmony import analyze_harmony
-    measures, analyses, _ = build_symbolic_layers("data/sonata01-1.krn")
+    measures, analyses, _ = build_symbolic_layers(str(KERN_DIR / "sonata01-1.krn"))
     _, spans = analyze_harmony(measures, analyses)
     opening = [span for span in spans if span.measure_index == 0]
     assert opening and all(span.figure is None for span in opening)
@@ -225,7 +226,7 @@ def test_third_inversion_dominant_seventh_is_read_from_the_notated_bass():
     Guards against 'simplifying' the bass rule back to a root-position bias."""
     from analysis.analyzer import build_symbolic_layers
     from analysis.harmony import analyze_harmony
-    measures, analyses, _ = build_symbolic_layers("data/sonata08-2.krn")
+    measures, analyses, _ = build_symbolic_layers(str(KERN_DIR / "sonata08-2.krn"))
     _, spans = analyze_harmony(measures, analyses)
     figures = [span.figure for span in spans if span.measure_index in (0, 1)]
     assert figures == ["I", "V42", "I6", "V65"]

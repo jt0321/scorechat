@@ -23,7 +23,10 @@ def score_to_mei(score_path: str, output_dir: Optional[str] = None) -> Optional[
 
     score_path = Path(score_path)
     if output_dir is None:
-        output_dir = score_path.parent / "mei"
+        # Never beside the source: the sources are a submodule checkout, and
+        # derived files written into it would leave it permanently dirty.
+        from analysis.corpus import MEI_DIR
+        output_dir = MEI_DIR
     Path(output_dir).mkdir(parents=True, exist_ok=True)
 
     ext = score_path.suffix.lower()

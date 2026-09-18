@@ -32,7 +32,6 @@ gemini    = ["langchain-google-genai>=2.0.0"]
 dev       = ["pytest>=8.0.0", "pytest-cov>=5.0.0"]
 
 [project.scripts]
-download-beethoven-sonatas = "download_beethoven_piano_sonatas:main"
 ingest-scores              = "ingest_scores:main"
 
 [build-system]

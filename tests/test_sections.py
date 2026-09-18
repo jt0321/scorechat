@@ -12,10 +12,11 @@ from pathlib import Path
 from analysis.sections import (
     parse_notated_sections, repeated_sections, section_evidence,
 )
+from analysis.corpus import KERN_DIR
 
 
 def _load(name: str) -> str:
-    path = Path("data") / name
+    path = KERN_DIR / name
     if not path.exists():
         pytest.skip(f"{name} is not available")
     return path.read_text(encoding="utf-8")

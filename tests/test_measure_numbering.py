@@ -13,10 +13,11 @@ import pytest
 from pathlib import Path
 
 from pipeline.mei_converter import measure_ordinals, pickup_ordinals
+from analysis.corpus import KERN_DIR, MEI_DIR
 
 
-ANACRUSIS_MEI = Path("data/mei/sonata01-1.mei")   # Op. 2 No. 1/i, upbeat
-PLAIN_MEI = Path("data/mei/sonata08-2.mei")       # Op. 13/ii, no upbeat
+ANACRUSIS_MEI = MEI_DIR / "sonata01-1.mei"   # Op. 2 No. 1/i, upbeat
+PLAIN_MEI = MEI_DIR / "sonata08-2.mei"       # Op. 13/ii, no upbeat
 
 
 def _read(path: Path) -> str:
@@ -122,12 +123,12 @@ def test_every_bar_of_the_corpus_is_addressable_in_its_rendering():
     import re
     from pathlib import Path
     from analysis.humdrum import spine_layout
-    sources = sorted(Path("data").glob("sonata*.krn"))
+    sources = sorted(KERN_DIR.glob("sonata*.krn"))
     if not sources:
         pytest.skip("corpus not downloaded")
     unaddressable = 0
     for source in sources:
-        rendering = Path("data/mei") / f"{source.stem}.mei"
+        rendering = MEI_DIR / f"{source.stem}.mei"
         if not rendering.exists():
             continue
         bars = [int(m.group(1)) for _, line, _, toks in spine_layout(source.read_text(encoding="utf-8"))

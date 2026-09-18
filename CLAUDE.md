@@ -28,7 +28,7 @@ psql "$DATABASE_URL" -f db/migrations/006_drop_retrieval_layer.sql
 
 Ingestion pipeline:
 ```bash
-python download_beethoven_piano_sonatas.py --sonata 32   # fetch .krn from craigsapp/beethoven-piano-sonatas
+git submodule update --init                              # .krn sources: craigsapp/beethoven-piano-sonatas, pinned
 python ingest_scores.py                                  # parse -> analyse -> MEI -> store
 python ingest_scores.py --symbolic-only                  # skip MEI rendering, just rebuild symbolic layers
 python build_sections.py                                 # record notated section structure (run before relations)
@@ -59,6 +59,8 @@ pytest tests/test_analyzer.py -k test_detect_texture_with_music21   # single tes
 Some `test_analyzer.py` cases are skipped unless `tests/fixtures/sample.musicxml` exists.
 
 ## Architecture
+
+**Where the corpus lives.** The `.krn` sources are Craig Sapp's `beethoven-piano-sonatas`, a git submodule at `data/beethoven-piano-sonatas` pinned to `2d6627b` (2025-02-28) — the commit whose 103 files are byte-identical to the copies this project used to track, so the switch changed no analysis. Paths come from `analysis/corpus.py` (`KERN_DIR`, `MEI_DIR`); nothing should build `data/...` paths by hand. MEI is *derived* — `ingest_scores.py` regenerates it into `data/mei/`, gitignored — and must never be written beside a source, since that would leave the submodule checkout permanently dirty; `score_to_mei` defaults to `MEI_DIR` for that reason. Tests that need MEI skip until an ingest has produced it.
 
 Ingestion pipeline: Humdrum `.krn` → `music21` parse → canonical measure encoding → versioned symbolic analysis → MEI (via Verovio) for browser rendering. See the Mermaid diagram at the top of `README.md` (edit it there; GitHub renders it, so there is no image to re-render) and `README.md`'s "Symbolic Score Data Model" section for the full table-by-table breakdown (`score_sources`, `score_measures`, `measure_analyses`, `analysis_runs`, `span_analyses`, `span_relations`).
 

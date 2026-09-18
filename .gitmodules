@@ -1,0 +1,4 @@
+[submodule "data/beethoven-piano-sonatas"]
+	path = data/beethoven-piano-sonatas
+	url = https://github.com/craigsapp/beethoven-piano-sonatas
+	shallow = true

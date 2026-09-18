@@ -16,6 +16,7 @@ from db.models import (
     MeasureAnalysis, AnalysisRun, SpanAnalysis, SpanRelation,
 )
 from db.session import session_scope
+from analysis.corpus import ROOT
 from analysis.analyzer import (
     CanonicalMeasure, PerMeasureAnalysis, SpanCandidate, SPAN_ANALYSIS_VERSION,
 )
@@ -41,10 +42,29 @@ def upsert_work(metadata: dict) -> int:
         return work.id
 
 
+def repo_path(file_path: str | Path) -> str:
+    """A path as stored: relative to the repository when it lies inside it.
+
+    Stored paths outlive the checkout they were written from -- an absolute path
+    breaks when the repository moves, and a cwd-relative one breaks whenever the
+    server runs from anywhere but the root. `resolve_repo_path` is the inverse.
+    """
+    path = Path(file_path).resolve()
+    try:
+        return str(path.relative_to(ROOT))
+    except ValueError:
+        return str(path)
+
+
+def resolve_repo_path(stored: str) -> Path:
+    path = Path(stored)
+    return path if path.is_absolute() else ROOT / path
+
+
 def store_asset(work_id: int, asset_type: str, file_path: str) -> int:
     with session_scope() as session:
         asset = ScoreAsset(
-            work_id=work_id, asset_type=asset_type, file_path=str(file_path)
+            work_id=work_id, asset_type=asset_type, file_path=repo_path(file_path)
         )
         session.add(asset)
         session.commit()
@@ -60,7 +80,7 @@ def store_symbolic_source(work_id: int, file_path: str, source_url: str | None =
         source = ScoreSource(
             work_id=work_id,
             format="humdrum-kern",
-            file_path=str(path),
+            file_path=repo_path(path),
             source_url=source_url,
             sha256=digest,
             raw_content=raw_content,
@@ -409,7 +429,7 @@ def get_work_mei(work_id: int) -> str | None:
         )
         if not asset:
             return None
-        path = Path(asset.file_path)
+        path = resolve_repo_path(asset.file_path)
         if not path.exists():
             return None
         return path.read_text(encoding="utf-8")

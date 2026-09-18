@@ -5,7 +5,7 @@ Batch-ingests all Humdrum (.krn) files in ./data/ through the symbolic RAG pipel
   Humdrum (.krn) → MEI (via Verovio) → music21 analysis → pgvector (PostgreSQL)
 
 Prerequisites:
-    python download_beethoven_piano_sonatas.py  # fetch .krn files
+    git submodule update --init                 # fetch the .krn sources
     psql $DATABASE_URL -f db/schema.sql  # create tables (first time only)
 """
 
@@ -16,7 +16,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from download_beethoven_piano_sonatas import DATA_DIR
+from analysis.corpus import KERN_DIR, MEI_DIR
 from db.store import (
     upsert_work, store_asset, clear_work_assets, clear_work_symbolic_layers,
     store_symbolic_layers, store_symbolic_source, store_span_candidates,
@@ -175,12 +175,12 @@ def parse_krn_metadata(krn_path: Path) -> dict:
 @click.option("--symbolic-only", is_flag=True,
               help="Rebuild the symbolic layers only, keeping the rendered MEI assets")
 def main(symbolic_only: bool):
-    krns = sorted(DATA_DIR.glob("*.krn"))
+    krns = sorted(KERN_DIR.glob("*.krn"))
     if not krns:
-        click.echo(f"No Humdrum (.krn) files found in ./{DATA_DIR}/ — run download_beethoven_piano_sonatas.py first.")
+        click.echo(f"No Humdrum (.krn) files found in {KERN_DIR} — run `git submodule update --init` first.")
         return
 
-    click.echo(f"Found {len(krns)} Humdrum score(s) in ./{DATA_DIR}/\n")
+    click.echo(f"Found {len(krns)} Humdrum score(s) in {KERN_DIR}\n")
 
     for krn in krns:
         meta = parse_krn_metadata(krn)
@@ -225,7 +225,7 @@ def main(symbolic_only: bool):
 
         if not symbolic_only:
             # Generate MEI file dynamically using Verovio (needed for SVG rendering)
-            mei_path = score_to_mei(str(krn))
+            mei_path = score_to_mei(str(krn), output_dir=MEI_DIR)
             if mei_path:
                 store_asset(work_id, "mei", str(mei_path))
                 click.echo(f"   ✓ MEI file generated → {mei_path.name}")

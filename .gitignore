@@ -13,3 +13,6 @@ data/*.db
 
 # Commentary texts: fetched by fetch_sources.py, pinned by sources/manifest.toml
 data/sources/
+
+# Derived by ingest_scores.py (Verovio); regenerated, never edited
+data/mei/
