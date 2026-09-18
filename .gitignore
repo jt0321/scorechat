@@ -10,3 +10,6 @@ dist/
 *.log
 data/*.db
 .vscode/
+
+# Commentary texts: fetched by fetch_sources.py, pinned by sources/manifest.toml
+data/sources/

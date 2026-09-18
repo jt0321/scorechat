@@ -1,0 +1,410 @@
+# sources/manifest.toml
+#
+# The commentary texts ScoreChat reads, and where in each one every sonata is
+# discussed. The texts themselves are NOT in this repository: `fetch_sources.py`
+# downloads them into data/sources/ (gitignored) and refuses any file whose
+# sha256 differs from the one pinned here, so every line and leaf number below
+# refers to exactly one version of each text.
+#
+# Sections
+# --------
+# A section runs from its start to the next section's start. Text before the
+# first section is not ingested (title pages, contents -- a table of contents
+# names every opus and would read as mentions of all of them).
+#
+#   sonatas = [14]     the section is *declared* to discuss these sonatas, by
+#                      catalogue number (works.work_number), not opus string.
+#                      Passages inherit the declaration and are then checked
+#                      against what they actually name.
+#   sonatas = []       nothing is declared: passages are anchored only by what
+#                      they name (an opus, a nickname), or not at all.
+#   include = false    the section is skipped entirely.
+#
+# `heading` is the heading as the OCR renders it, typos included ("OP. loi" is
+# Op. 101), matched ignoring whitespace. It is how a reviewer checks the table
+# against the scan, and how the ingest finds where on the page a section
+# starts when two share a page.
+#
+# Pages
+# -----
+# `leaf` is the scan's page index and what an archive.org link opens
+# (…/page/n{leaf}); `page` is the number printed on it. archive.org's own
+# page-number detection runs one behind the printed numbers in the Marx volume,
+# which `page_offset` corrects and the ingest verifies against the running
+# heads.
+
+# ---------------------------------------------------------------------------
+[[source]]
+key = "elterlein-1879"
+title = "Beethoven's Pianoforte Sonatas Explained for the Lovers of the Musical Art"
+author = "Ernst von Elterlein"
+translator = "Emily Hill"
+published = "London: W. Reeves, 1879 (2nd edition)"
+year = 1879
+language = "en"
+format = "archive-hocr"
+archive_id = "beethovenspianof00elte"
+page_offset = 0
+rights = "Published 1879; public domain in the United States. archive.org records no rights statement."
+coverage = "All 32 sonatas, a few pages each, on character and form rather than bars."
+
+[[source.file]]
+name = "beethovenspianof00elte_hocr_searchtext.txt.gz"
+sha256 = "f9f4bfed5b84b5c782b50d286a34727a009d9bf1f9a20e02e4549d71f2003417"
+[[source.file]]
+name = "beethovenspianof00elte_hocr_pageindex.json.gz"
+sha256 = "4115087e4e97fc12971671591f78a30c6fa802b7c3ced9f264c0572cd56ffe89"
+[[source.file]]
+name = "beethovenspianof00elte_page_numbers.json"
+sha256 = "574aa9f5a14aabf603ba472542dce603e0975d2f620771a650951d296af642e0"
+
+[[source.section]]
+leaf = 17
+page = 11
+heading = "THE SONATA IN GENERAL"
+sonatas = []
+note = "Parts I-II: the sonata in general, and before Beethoven"
+[[source.section]]
+leaf = 39
+page = 33
+heading = "OP. 2, No. I, F MINOR"
+sonatas = [1]
+[[source.section]]
+leaf = 42
+page = 36
+heading = "OP. 2, No. 2, A MAJOR"
+sonatas = [2]
+[[source.section]]
+leaf = 44
+page = 38
+heading = "OP. 2, No. 3, C MAJOR"
+sonatas = [3]
+[[source.section]]
+leaf = 47
+page = 41
+heading = "OP. 6, D MAJOR"
+sonatas = []
+include = false
+note = "Op. 6 is the sonata for piano four hands, which is not in the corpus"
+[[source.section]]
+leaf = 48
+page = 42
+heading = "OP. 7, E FLAT MAJOR"
+sonatas = [4]
+[[source.section]]
+leaf = 50
+page = 44
+heading = "OP. 10, No. I, C MINOR"
+sonatas = [5]
+[[source.section]]
+leaf = 52
+page = 46
+heading = "OP. lo, No. 2, F MAJOR"
+sonatas = [6]
+[[source.section]]
+leaf = 53
+page = 47
+heading = "OP. lo, No. 3, D MAJOR"
+sonatas = [7]
+[[source.section]]
+leaf = 56
+page = 50
+heading = "OP. 13, C MINOR"
+sonatas = [8]
+[[source.section]]
+leaf = 59
+page = 53
+heading = "OP. 14, Nos. I and 2"
+sonatas = [9, 10]
+note = "one section discusses both sonatas"
+[[source.section]]
+leaf = 60
+page = 54
+heading = "OP. 22, B FLAT"
+sonatas = [11]
+[[source.section]]
+leaf = 62
+page = 56
+heading = "OP. 26, A FLAT"
+sonatas = [12]
+[[source.section]]
+leaf = 64
+page = 58
+heading = "OP. 27, No. I, E FLAT"
+sonatas = [13]
+[[source.section]]
+leaf = 65
+page = 59
+heading = "OP. 27, No. 2, C SHARP MINOR"
+sonatas = [14]
+[[source.section]]
+leaf = 68
+page = 62
+heading = "OP. 28, D MAJOR"
+sonatas = [15]
+[[source.section]]
+leaf = 70
+page = 64
+heading = "OP. 31, No. I, G MAJOR"
+sonatas = [16]
+[[source.section]]
+leaf = 72
+page = 66
+heading = "OP. 31, No. 2, D MINOR"
+sonatas = [17]
+[[source.section]]
+leaf = 74
+page = 68
+heading = "OP. 31, No. 3, E FLAT"
+sonatas = [18]
+[[source.section]]
+leaf = 76
+page = 70
+heading = "OP. 49, No. I, G MINOR"
+sonatas = [19, 20]
+note = "one section discusses both sonatas"
+[[source.section]]
+leaf = 77
+page = 71
+heading = "OP. 53, C MAJOR"
+sonatas = [21]
+[[source.section]]
+leaf = 80
+page = 74
+heading = "Op. 54, F MAJOR"
+sonatas = [22]
+[[source.section]]
+leaf = 82
+page = 76
+heading = "OP. 57, F MINOR"
+sonatas = [23]
+[[source.section]]
+leaf = 86
+page = 80
+heading = "OP. 78, F SHARP"
+sonatas = [24]
+[[source.section]]
+leaf = 86
+page = 80
+heading = "OP. 79, G MAJOR"
+sonatas = [25]
+[[source.section]]
+leaf = 87
+page = 81
+heading = "OP. 81, E FLAT"
+sonatas = [26]
+[[source.section]]
+leaf = 91
+page = 85
+heading = "OP. 90, E MINOR"
+sonatas = [27]
+[[source.section]]
+leaf = 93
+page = 87
+heading = "OP. loi, A MAJOR"
+sonatas = [28]
+[[source.section]]
+leaf = 96
+page = 90
+heading = "OP. io6, B FLAT"
+sonatas = [29]
+[[source.section]]
+leaf = 102
+page = 96
+heading = "OP. 109, E MAJOR"
+sonatas = [30]
+[[source.section]]
+leaf = 105
+page = 99
+heading = "OP. no, A FLAT"
+sonatas = [31]
+[[source.section]]
+leaf = 107
+page = 101
+heading = "OP. Ill, C MINOR"
+sonatas = [32]
+[[source.section]]
+leaf = 114
+page = 108
+heading = "RETROSPECTIVE"
+sonatas = []
+note = "retrospective and concluding remarks"
+
+# ---------------------------------------------------------------------------
+[[source]]
+key = "marx-1895"
+title = "Introduction to the Interpretation of the Beethoven Piano Works"
+author = "Adolf Bernhard Marx"
+translator = "Fannie Louise Gwinner"
+published = "Chicago: Clayton F. Summy, 1895"
+year = 1895
+language = "en"
+format = "archive-hocr"
+archive_id = "introductiontoin00marxuoft"
+page_offset = 1
+rights = "Published 1895; archive.org marks it NOT_IN_COPYRIGHT."
+coverage = "A guide to twenty of the sonatas, on how to understand and play them; long general chapters first."
+
+[[source.file]]
+name = "introductiontoin00marxuoft_hocr_searchtext.txt.gz"
+sha256 = "0538b5731178905ce62da8e53c0167fb452c0a8dfc8a08bac1532fa6a32b1293"
+[[source.file]]
+name = "introductiontoin00marxuoft_hocr_pageindex.json.gz"
+sha256 = "d4e4e04c3a94b9a6bf09277cde596a84525f4c8a65e572629973fcde3afd8f07"
+[[source.file]]
+name = "introductiontoin00marxuoft_page_numbers.json"
+sha256 = "66e47fd1beb82df44bcc8fe42450843b29cf2bb8e2deb31e106081b825dce22e"
+
+[[source.section]]
+leaf = 14
+page = 11
+heading = "THE READERS OF THE BOOK"
+sonatas = []
+note = "general chapters on study and interpretation"
+[[source.section]]
+leaf = 94
+page = 91
+heading = "Prefatory Remarks"
+sonatas = []
+[[source.section]]
+leaf = 94
+page = 91
+heading = "F-minor Sonata, Op. 2"
+sonatas = [1]
+[[source.section]]
+leaf = 100
+page = 97
+heading = "A-major Sonata, Op. 2"
+sonatas = [2]
+[[source.section]]
+leaf = 103
+page = 100
+heading = "E-flat Major Sonata, Op. 7"
+sonatas = [4]
+[[source.section]]
+leaf = 107
+page = 104
+heading = "F-Major Sonata, Op. 10"
+sonatas = [6]
+note = "the heading omits 'No. 2'; F major identifies it"
+[[source.section]]
+leaf = 109
+page = 106
+heading = "D-Major Sonata, Op. 10"
+sonatas = [7]
+note = "the heading omits 'No. 3'; D major identifies it"
+[[source.section]]
+leaf = 110
+page = 107
+heading = "Pathetique Sonata, Op. 13"
+sonatas = [8]
+[[source.section]]
+leaf = 112
+page = 109
+heading = "G-Major Sonata, Op. i4"
+sonatas = [10]
+note = "the heading omits 'No. 2'; G major identifies it"
+[[source.section]]
+leaf = 113
+page = 110
+heading = "A-flat Major Sonata Op. 26"
+sonatas = [12]
+[[source.section]]
+leaf = 116
+page = 113
+heading = "Fantasie Sonata Op. 27, i"
+sonatas = [13]
+[[source.section]]
+leaf = 117
+page = 114
+heading = "Fantasie Sonata Op. 27, 2"
+sonatas = [14]
+[[source.section]]
+leaf = 120
+page = 117
+heading = "D-Major Sonata Op. 28"
+sonatas = [15]
+[[source.section]]
+leaf = 123
+page = 120
+heading = "G-Major Sonata, Op. 31"
+sonatas = [16]
+note = "the heading omits 'No. 1'; G major identifies it"
+[[source.section]]
+leaf = 124
+page = 121
+heading = "D-Minor Sonata Op. 3i"
+sonatas = [17]
+note = "the heading omits 'No. 2'; D minor identifies it"
+[[source.section]]
+leaf = 129
+page = 126
+heading = "E-flat Major Sonata, Op. 31"
+sonatas = [18]
+note = "the heading omits 'No. 3'; E-flat major identifies it"
+[[source.section]]
+leaf = 130
+page = 127
+heading = "C-Major Sonata Op. 53"
+sonatas = [21]
+[[source.section]]
+leaf = 132
+page = 129
+heading = "F Minor Sonata Op. 57"
+sonatas = [23]
+[[source.section]]
+leaf = 139
+page = 136
+heading = "Les Adieux, Sonata Op. 81"
+sonatas = [26]
+[[source.section]]
+leaf = 143
+page = 140
+heading = "E Minor Sonata Op. 90"
+sonatas = [27]
+[[source.section]]
+leaf = 145
+page = 142
+heading = "A Major Sonata Op. 101"
+sonatas = [28]
+[[source.section]]
+leaf = 148
+page = 145
+heading = "B-flat Major Sonata Op. 106"
+sonatas = [29]
+[[source.section]]
+leaf = 154
+page = 151
+heading = "Close"
+sonatas = []
+note = "closing remarks"
+
+# ---------------------------------------------------------------------------
+[[source]]
+key = "shedlock-1895"
+title = "The Pianoforte Sonata: Its Origin and Development"
+author = "J. S. Shedlock"
+published = "London: Methuen, 1895"
+year = 1895
+language = "en"
+format = "gutenberg-text"
+archive_id = "thepianoforteson17074gut"
+encoding = "latin-1"
+rights = "Project Gutenberg eBook #17074; public domain in the United States. The Gutenberg licence governs redistribution of this file, which is why it is fetched rather than committed."
+coverage = "A history of the sonata; only the Beethoven chapter is ingested, and it names works rather than walking through them."
+
+[[source.file]]
+name = "17074-8.txt"
+sha256 = "40ec7e11275d65f115d938b2c8e2f01ff97a6b32cdc03d925733272575848aae"
+
+[[source.section]]
+line = 3539
+heading = "CHAPTER VII"
+sonatas = []
+note = "Ludwig van Beethoven"
+[[source.section]]
+line = 4255
+heading = "CHAPTER VIII"
+sonatas = []
+include = false
+note = "the rest of the book is about other composers"

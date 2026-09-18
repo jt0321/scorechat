@@ -77,6 +77,7 @@ cp .env.example .env                 # add a provider key
 python download_beethoven_piano_sonatas.py   # fetch .krn sources
 python ingest_scores.py                      # parse, encode, analyse, store
 python build_sections.py && python build_relations.py
+python fetch_sources.py                      # commentary texts (not in the repo; pinned by checksum)
 
 python ask.py "where is the recapitulation in the Moonlight finale?"
 python server.py                     # viewer + API at localhost:8000
