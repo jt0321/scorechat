@@ -260,6 +260,12 @@
       line-height: 1.4;
     }
 
+    .quote-card {
+      text-decoration: none;
+      color: inherit;
+      border-left: 3px solid var(--text-muted);
+    }
+
     .segment-card-btn {
       font-size: 0.75rem;
       color: #fff;
@@ -841,7 +847,7 @@
 
         // Open the score at the first cited range, so the passage the answer
         // talks about is on screen next to it.
-        const firstRange = citations.find(c => c.work_id && c.measure_start !== null);
+        const firstRange = citations.find(c => c.kind !== "quote" && c.work_id && c.measure_start !== null);
         if (firstRange) {
           loadWorkIntoViewer(firstRange.work_id, firstRange.label,
                              firstRange.measure_start, firstRange.measure_end);
@@ -857,10 +863,19 @@
     // answer rests on; the ones that carry a bar range open it in the score.
     function traceCitations(trace) {
       let work = null;
-      return (trace || []).map(step => {
+      return (trace || []).flatMap(step => {
         const args = step.args || {};
         const result = step.result || {};
         if (result.resolved) work = result.resolved;
+
+        // Commentary is quoted, not cited as score evidence: one card per
+        // passage, naming its author and page and linking to the scan.
+        if (step.tool === "search_commentary_tool" && (result.passages || []).length) {
+          return result.passages.slice(0, 3).map(passage => ({
+            tool: step.tool, kind: "quote", passage,
+            label: `${passage.author.split(" ").slice(-1)[0]} (${passage.year})`,
+          }));
+        }
 
         const measures = args.measure_start !== undefined
           ? [args.measure_start, args.measure_end]
@@ -918,6 +933,16 @@
         case "get_key_plan_tool":
           (result.regions || []).slice(0, 6).forEach(r => parts.push(region(r)));
           break;
+        case "search_commentary_tool":
+          parts.push("no passage of the commentary matched");
+          break;
+        case "commentary_claims_tool": {
+          const mark = { supported: "✓ engraved key", agrees_with_estimate: "≈ estimate",
+                         disagrees_with_estimate: "≠ estimate" };
+          (result.claims || []).filter(c => c.type === "key" && mark[c.check]).slice(0, 5)
+            .forEach(c => parts.push(`${c.author.split(" ").slice(-1)[0]} p. ${c.page ?? "–"}: ${c.value} ${mark[c.check]}`));
+          break;
+        }
         case "locate_in_form_tool":
           if (result.section) {
             parts.push(`section ${result.section.label}, mm. ${result.section.measure_start}\u2013${result.section.measure_end}`);
@@ -940,6 +965,10 @@
       if (citations && citations.length > 0) {
         segmentsHtml = `<div class="segment-cards-container">`;
         citations.forEach(citation => {
+          if (citation.kind === "quote") {
+            segmentsHtml += quoteCard(citation);
+            return;
+          }
           const hasRange = citation.work_id && citation.measure_start !== null;
           const range = hasRange
             ? ` — mm. ${citation.measure_start}–${citation.measure_end}`
@@ -952,7 +981,7 @@
                 <span>${citation.tool.replace(/_tool$/, "")}${range}</span>
                 <span style="font-size: 0.7rem; color: var(--accent)">${hasRange ? "Click to view in score" : (citation.label || "")}</span>
               </div>
-              <div class="segment-card-body">${citation.detail}</div>
+              <div class="segment-card-body">${escapeHtml(citation.detail)}</div>
             </div>
           `;
         });
@@ -993,6 +1022,30 @@
     function removeMessage(id) {
       const el = document.getElementById(id);
       if (el) el.remove();
+    }
+
+    // A commentary passage: who said it, where, and a link to the scanned page.
+    // Marked as opinion so it is never read as one of the score-evidence cards.
+    function quoteCard(citation) {
+      const p = citation.passage;
+      const where = p.page != null ? `p. ${p.page}` : (p.line != null ? `line ${p.line}` : "");
+      const about = p.scope === "movement" ? "on this movement"
+                  : p.scope === "sonata" ? "on the sonata as a whole" : "general";
+      const found = Object.entries(p.found_by || {}).map(([k, r]) => `${k === "fulltext" ? "text" : k} #${r}`).join(" · ");
+      const snippet = p.text.length > 260 ? p.text.slice(0, 260) + "…" : p.text;
+      return `
+        <a class="segment-card quote-card" href="${encodeURI(p.url)}" target="_blank" rel="noopener">
+          <div class="segment-card-header">
+            <span>${escapeHtml(citation.label)}, ${escapeHtml(where)} — ${about}</span>
+            <span style="font-size: 0.7rem; color: var(--text-muted)">commentary · ${escapeHtml(found)}</span>
+          </div>
+          <div class="segment-card-body"><em>“${escapeHtml(snippet)}”</em></div>
+        </a>`;
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "").replace(/[&<>"']/g, c => ({
+        "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
     }
 
     // Card Click Handler

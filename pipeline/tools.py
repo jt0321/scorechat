@@ -128,9 +128,43 @@ def locate_in_form_tool(work_id: int, measure: int) -> str:
     return json.dumps(analysis_api.locate_in_form(work_id, measure))
 
 
+@tool
+def search_commentary_tool(query: str, work_id: int | None = None, whole_sonata: bool = False) -> str:
+    """Search what published commentators wrote about the sonatas: Elterlein
+    (1879, all 32 sonatas), Marx (1895, twenty of them), Shedlock (1895, a
+    history of the sonata).
+
+    Use it for questions about character, interpretation, history, or what
+    writers have said -- never as evidence of a musical fact, which comes only
+    from the score tools. Pass `work_id` to keep to one movement (remarks on
+    its sonata as a whole come back too, marked scope "sonata"), and
+    `whole_sonata` to widen to every movement. Quote briefly, name the author
+    and page, and say it is their view. Bar numbers in these texts follow the
+    author's edition, not ours: never cite them as ours.
+    """
+    return json.dumps(analysis_api.search_commentary(query, work_id, whole_sonata))
+
+
+@tool
+def commentary_claims_tool(work_id: int) -> str:
+    """What the commentators assert about a movement -- keys, formal terms, bar
+    references -- and, for keys, what the score says about each assertion.
+
+    `supported` means the movement's engraved key bears the claim out.
+    `agrees_with_estimate` / `disagrees_with_estimate` compare it with the
+    *estimated* key regions, which smooth away brief modulations: when a
+    commentator names a key the estimate lacks, say the two disagree and do
+    not assume the commentator is wrong. Formal terms are interpretations.
+    Use this when the user asks whether the commentary is right, or how the
+    writers' account compares with the score.
+    """
+    return json.dumps(analysis_api.commentary_claims(work_id))
+
+
 TOOLS = [
     resolve_work_tool, describe_span_tool, find_recurrences_tool,
     compare_spans_tool, get_key_plan_tool, locate_in_form_tool,
+    search_commentary_tool, commentary_claims_tool,
 ]
 TOOLS_BY_NAME = {t.name: t for t in TOOLS}
 
@@ -167,6 +201,18 @@ exposition or a recapitulation is your inference, so make it one that rests on
 stated evidence -- a repeat covering much of the movement, material returning at
 pitch, a key plan that comes home -- and say which. Where the evidence is thin
 or the analyser reports low confidence, prefer the weaker claim.
+
+Two kinds of source reach you and they must never be confused. The score tools
+return what the score shows. The commentary tools return what nineteenth-century
+writers -- Elterlein, Marx, Shedlock -- *said* about it: attribute every such
+remark to its author ("Marx hears the finale as ..."), quote briefly with the
+page, and never present it as fact. Where a commentator's claim and the score
+disagree, say so plainly and let the score decide matters of fact; where the
+disagreement is with an *estimated* key, say that the estimate may be what is
+wrong. A bar number in the commentary is the author's edition's: never repeat
+it as one of ours. Reach for the commentary when a question is about character,
+meaning, history or interpretation, or asks what writers have said -- not to
+fill a gap the score tools left.
 
 Write for a musician reading about the music, not a reader of a data dump. The
 tools return every chord and direction in a range; select the ones that carry

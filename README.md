@@ -126,6 +126,15 @@ python ask.py "describe mm. 195-210 of the Pathetique's first movement in the co
 python ask.py "in op 2 no 2 first movement, where does the opening material return?"
 ```
 
+A third shape reaches the commentary alongside the score:
+
+```bash
+python ask.py "what did the old commentators say about the Moonlight's Allegretto, and does the score bear out the key they give it?"
+```
+
+The answer quotes Elterlein and Marx by page, as their view, and settles the
+key from the score: Elterlein's D-flat major is the movement's engraved key.
+
 Each answer prints the tool calls it was built from. **That trace is the
 citation** — a claim with no supporting call under it is one to distrust.
 

@@ -19,6 +19,13 @@ upbeat into 229 and still reports itself as 229. See `analysis/numbering.py`.
 *Absence is an answer.* A movement with no notated sections, a range with no
 recurrences, a key estimate below confidence -- each returns an empty result
 with a `note` saying so, never a guess. The model is instructed to relay that.
+
+The last two functions are the exception to "every value comes from the
+score": they return published *commentary* -- what Elterlein, Marx and
+Shedlock wrote -- and say so in every result. Commentary is attributed opinion,
+anchored to a work so it can be found and quoted beside the score; it is never
+evidence of a musical fact, and where it makes a checkable claim the result
+carries what the score says about it.
 """
 
 from __future__ import annotations
@@ -431,3 +438,112 @@ def locate_in_form(work_id: int, measure: int) -> dict:
                      for s in sections],
         "note": None if containing else f"No notated section contains m. {measure}.",
     }
+
+
+# --- what the commentators say ----------------------------------------------
+
+COMMENTARY_NOTE = ("Published commentary, quoted as the author's opinion. It is not evidence "
+                   "of a musical fact; bar numbers in it follow the author's edition, not ours.")
+
+
+def _movements_of(work_id: int) -> tuple[int | None, dict[int, int]]:
+    """A movement's sonata number, and that sonata's work ids -> movement numbers."""
+    works = list_works()
+    work = next((w for w in works if w["id"] == work_id), None)
+    if work is None or work.get("work_number") is None:
+        return None, {}
+    numbers = {w["id"]: w.get("movement_number") for w in works
+               if w.get("work_number") == work["work_number"]}
+    return work["work_number"], numbers
+
+
+def search_commentary(query: str, work_id: int | None = None, whole_sonata: bool = False,
+                      limit: int = 4) -> dict:
+    """Passages of published commentary answering `query`.
+
+    With `work_id`, passages about that movement come back along with remarks
+    on its sonata as a whole, each marked by `scope`; `whole_sonata` widens to
+    every movement. Without it the whole of the commentary is searched.
+    """
+    from commentary.search import search_passages
+    sonata, movements = (None, {})
+    if work_id is not None:
+        sonata, movements = _movements_of(work_id)
+        if sonata is None:
+            return {"error": f"Work {work_id} is not a movement of a catalogued sonata."}
+    result = search_passages(query, sonata=sonata if whole_sonata else None,
+                             work_id=None if whole_sonata else work_id, limit=limit)
+    passages = [{
+        "author": p["author"], "title": p["title"], "year": p["year"],
+        "page": p["page"], "line": p["line"], "url": p["url"],
+        "about_sonata": p["sonata"],
+        "about_movements": sorted(movements.get(w, w) for w in p["work_ids"]) if movements else p["work_ids"],
+        "scope": p["scope"], "anchor": p["anchor_status"], "found_by": p["found_by"],
+        "text": p["content"],
+    } for p in result["passages"]]
+    note = result["note"] or COMMENTARY_NOTE
+    if not passages and work_id is not None:
+        note = ("None of the ingested commentaries discusses this in words the search can match. "
+                "Marx covers only twenty of the sonatas, and Shedlock names works rather than "
+                "discussing them; absence here is not evidence about the music.")
+    return {"query": query, "retrievers": result["retrievers"], "model": result["model"],
+            "passages": passages, "note": note}
+
+
+def commentary_claims(work_id: int, limit: int = 40) -> dict:
+    """What the commentators assert about a movement, and what the score says.
+
+    Key claims carry their check: `supported` by the engraved key,
+    `agrees_with_estimate` / `disagrees_with_estimate` against the estimated
+    key regions -- where a disagreement may be the estimator's fault as easily
+    as the author's -- or `not_checkable` with the reason. Formal terms are
+    interpretive; bar references are the author's edition.
+    """
+    from sqlalchemy import text
+    from db.session import session_scope
+    sonata, movements = _movements_of(work_id)
+    if sonata is None:
+        return {"error": f"Work {work_id} is not a movement of a catalogued sonata."}
+    with session_scope() as session:
+        rows = session.execute(text("""
+            SELECT d.author, d.year, p.page, p.line, p.work_ids, c.claim_type, c.value,
+                   c.check_status, c.check_evidence, c.quote
+            FROM passage_claims c JOIN text_passages p ON p.id = c.passage_id
+            JOIN text_documents d ON d.id = p.document_id
+            WHERE :work = ANY(p.work_ids) OR (cardinality(p.work_ids) = 0 AND p.sonata = :sonata)
+            ORDER BY CASE c.claim_type WHEN 'key' THEN 0 WHEN 'form' THEN 1 ELSE 2 END, p.id
+        """), {"work": work_id, "sonata": sonata}).mappings().all()
+    movement = movements.get(work_id)
+    # A claim whose own sentence named its movement belongs to that movement,
+    # even inside a passage that spans several.
+    rows = [r for r in rows if _placed_movements(r["check_evidence"]) in (None, set())
+            or movement in _placed_movements(r["check_evidence"])]
+    claims = [{
+        "author": r["author"], "year": r["year"], "page": r["page"], "line": r["line"],
+        "type": r["claim_type"], "value": r["value"], "check": r["check_status"],
+        "evidence": r["check_evidence"], "quote": r["quote"],
+        "scope": "movement" if work_id in (r["work_ids"] or []) else "sonata",
+    } for r in rows[:limit]]
+    counts: dict[str, int] = {}
+    for r in rows:
+        if r["claim_type"] == "key":
+            counts[r["check_status"]] = counts.get(r["check_status"], 0) + 1
+    return {
+        "work_id": work_id, "movement": movement, "claims": claims,
+        "key_checks": counts, "truncated": len(rows) > limit,
+        "note": (COMMENTARY_NOTE + " A key the estimate does not bear out may be the estimator's "
+                 "error: it smooths away brief modulations." if rows else
+                 "No commentator's claim is anchored to this movement."),
+    }
+
+
+def _placed_movements(evidence: dict) -> set[int] | None:
+    """The movements a key claim was placed at by its own sentence, or None
+    when it was placed only by its passage or sonata."""
+    if not evidence or evidence.get("placed_by") != "sentence":
+        return None
+    if "movement" in evidence:
+        return {evidence["movement"]}
+    places = evidence.get("regions") or evidence.get("relative_of") or []
+    found = {p["movement"] for p in places}
+    return found or {int(n) for n in (evidence.get("declared_keys") or {})}
