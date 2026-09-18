@@ -80,6 +80,7 @@ python build_sections.py && python build_relations.py
 python fetch_sources.py                      # commentary texts (not in the repo; pinned by checksum)
 python ingest_commentary.py                  # passages anchored to sonata and movement
 python embed_commentary.py --model gemini    # optional: vector search over the commentary
+python build_claims.py                       # commentary claims, checked against the score
 
 python ask.py "where is the recapitulation in the Moonlight finale?"
 python server.py                     # viewer + API at localhost:8000
