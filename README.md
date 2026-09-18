@@ -82,13 +82,17 @@ flowchart TB
 
 ## Quickstart
 
+The Humdrum sources are a git submodule, so clone with them:
+
 ```bash
+git clone --recurse-submodules https://github.com/jt0321/scorechat
+cd scorechat
 uv venv && source .venv/bin/activate
 uv pip install -e ".[dev]"
 docker compose up -d                 # postgres
 cp .env.example .env                 # add a provider key
 
-git submodule update --init                  # .krn sources (a pinned submodule)
+git submodule update --init                  # only if you cloned without --recurse-submodules
 python ingest_scores.py                      # parse, encode, analyse, store
 python build_sections.py && python build_relations.py
 python fetch_sources.py                      # commentary texts (not in the repo; pinned by checksum)
