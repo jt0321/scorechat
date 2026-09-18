@@ -78,6 +78,7 @@ git submodule update --init                  # .krn sources (a pinned submodule)
 python ingest_scores.py                      # parse, encode, analyse, store
 python build_sections.py && python build_relations.py
 python fetch_sources.py                      # commentary texts (not in the repo; pinned by checksum)
+python ingest_commentary.py                  # passages anchored to sonata and movement
 
 python ask.py "where is the recapitulation in the Moonlight finale?"
 python server.py                     # viewer + API at localhost:8000
