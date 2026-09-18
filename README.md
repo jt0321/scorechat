@@ -29,9 +29,15 @@ flowchart TB
     REL["<b>relations</b><br/>repeats / varies between spans<br/><i>build_relations.py</i>"]
   end
 
+  subgraph commentary ["commentary — published opinion, beside the score, never in it"]
+    TEXTS["<b>sources/manifest.toml</b><br/>Elterlein 1879 · Marx 1895 · Shedlock 1895<br/><i>fetched, pinned by sha256, not committed</i>"]
+    PASS["<b>text_passages</b><br/>anchored to sonata · movement<br/><i>full text + vectors, any provider</i>"]
+    CLAIMS["<b>passage_claims</b><br/>keys checked against the score<br/><i>build_claims.py</i>"]
+  end
+
   subgraph answering ["answering"]
-    API["<b>pipeline/analysis_api.py</b><br/>six plain functions over stored analysis"]
-    TOOLS["<b>pipeline/tools.py</b><br/>the six bound as LLM tools — the trace is the citation<br/><i>ask.py · GET /api/ask · web client</i>"]
+    API["<b>pipeline/analysis_api.py</b><br/>six functions over stored analysis<br/>+ two over commentary"]
+    TOOLS["<b>pipeline/tools.py</b><br/>the eight bound as LLM tools — the trace is the citation<br/><i>ask.py · GET /api/ask · web client</i>"]
     MEI["<b>MEI via Verovio</b><br/>exact notation for a cited bar range"]
   end
 
@@ -51,6 +57,11 @@ flowchart TB
   REL --> API
   API --> TOOLS
   TOOLS --> MEI
+  TEXTS --> PASS
+  PASS --> CLAIMS
+  ANAL -. "engraved + estimated keys" .-> CLAIMS
+  PASS --> API
+  CLAIMS --> API
 
   classDef source fill:#131a22,stroke:#131a22,color:#ffffff
   classDef store fill:#eef1f4,stroke:#c9d2da,color:#131a22
@@ -60,10 +71,13 @@ flowchart TB
   class SRC,MEAS,ANAL store
   class NUM,HARM,SEC,REL pass
   class M21,HUM,API,TOOLS,MEI answer
+  classDef opinion fill:#f7f3ea,stroke:#b8a77a,color:#131a22
+  class TEXTS,PASS,CLAIMS opinion
   style readers fill:#f5f6f7,stroke:#c9d2da,color:#5a6673
   style canonical fill:#f5f6f7,stroke:#c9d2da,color:#5a6673
   style passes fill:#f5f6f7,stroke:#c9d2da,color:#5a6673
   style answering fill:#f5f6f7,stroke:#c9d2da,color:#5a6673
+  style commentary fill:#fbf9f4,stroke:#d8cdb0,color:#5a6673
 ```
 
 ## Quickstart
