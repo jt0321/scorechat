@@ -1,0 +1,35 @@
+# The corpus and everything derived from it: ingestion inputs, not runtime data.
+data/
+sources/
+
+.git/
+.github/
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+
+# Ingestion and analysis entry points — the image serves, it does not rebuild.
+ingest_scores.py
+ingest_commentary.py
+embed_commentary.py
+fetch_sources.py
+build_*.py
+backfill_mei.py
+renumber_measures.py
+evaluate_form.py
+ask.py
+evaluation/
+tests/
+
+.env
+.env.*
+*.md
+!README.md
+docker-compose.yml
+scorechat_ui_mockup.png
+requirements.txt

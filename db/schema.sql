@@ -25,6 +25,9 @@ CREATE TABLE score_assets (
     work_id     INT REFERENCES works(id) ON DELETE CASCADE,
     asset_type  TEXT NOT NULL CHECK (asset_type IN ('krn','mei')),
     file_path   TEXT NOT NULL,
+    -- The asset itself, so serving a score needs no filesystem: data/mei is
+    -- derived and gitignored, and a deployed instance has no copy of it.
+    content     TEXT,
     created_at  TIMESTAMPTZ DEFAULT NOW()
 );
 

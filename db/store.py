@@ -61,10 +61,17 @@ def resolve_repo_path(stored: str) -> Path:
     return path if path.is_absolute() else ROOT / path
 
 
-def store_asset(work_id: int, asset_type: str, file_path: str) -> int:
+def store_asset(work_id: int, asset_type: str, file_path: str,
+                content: str | None = None) -> int:
+    """Record a generated asset, with its text when we have it.
+
+    ``file_path`` remains provenance; ``content`` is what is actually served,
+    so a deployed instance never has to reach data/mei on disk.
+    """
     with session_scope() as session:
         asset = ScoreAsset(
-            work_id=work_id, asset_type=asset_type, file_path=repo_path(file_path)
+            work_id=work_id, asset_type=asset_type, file_path=repo_path(file_path),
+            content=content,
         )
         session.add(asset)
         session.commit()
@@ -429,6 +436,10 @@ def get_work_mei(work_id: int) -> str | None:
         )
         if not asset:
             return None
+        if asset.content:
+            return asset.content
+        # Pre-009 rows carry only a path. Local development still has the file;
+        # a deployed instance does not, which is why 009 exists.
         path = resolve_repo_path(asset.file_path)
         if not path.exists():
             return None

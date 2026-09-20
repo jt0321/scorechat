@@ -26,6 +26,8 @@ psql "$DATABASE_URL" -f db/migrations/005_drop_omr_columns.sql
 psql "$DATABASE_URL" -f db/migrations/006_drop_retrieval_layer.sql
 psql "$DATABASE_URL" -f db/migrations/007_commentary.sql
 psql "$DATABASE_URL" -f db/migrations/008_passage_claims.sql
+psql "$DATABASE_URL" -f db/migrations/009_asset_content.sql
+python backfill_mei.py                                   # 009: MEI files -> score_assets.content
 ```
 
 Ingestion pipeline:
@@ -54,6 +56,12 @@ python ask.py "compare mm. 1-8 with mm. 103-110 of op 27 no 2 iii" --no-trace
 Run the app:
 ```bash
 python server.py                    # API + static HTML/JS client at http://localhost:8000
+```
+
+Deploying it (see "Hosting the demo" below):
+```bash
+docker build -t scorechat:demo .    # runtime only: no corpus, no ingestion
+fly deploy                          # fly.toml; DATABASE_URL + a provider key as secrets
 ```
 
 Tests:
@@ -110,6 +118,37 @@ Measure numbering — two numbering schemes exist and confusing them fails silen
 Verovio agrees with printed numbering in its MEI (`@n` absent on a pickup), but its `select({"measureRange": ...})` counts **ordinal positions from 1**, in which the pickup *is* position 1 — so printed bar N is ordinal N+1 wherever an anacrusis exists. Translate via `measure_ordinals()` (Python) or `measureInfo()` (`frontend/score_viewer.html`); `frontend/index.html` sidesteps it by resolving `@n` to `xml:id` and navigating with `getPageWithElement`. Note the older `select` *option* is silently unsupported in Verovio 6 and renders the whole movement — use the `select()` **method**, with a dict, before `loadData`.
 
 Span/relation review lifecycle: `span_analyses` and `span_relations` rows carry a status of `proposed`, `accepted`, or `rejected`. Every row the pipeline creates is `proposed` — there is no UI yet for accept/reject. `span_relations` now carries `repeats`/`varies` proposals from the pass above; the other relation types (`inverts`, `diminishes`, `augments`, `changes_meter_from`, `contrasts_with`) still have no analyser. Relations are evidence, not form labels: a target range with no span of its own gets one created as a `candidate`, never as a `theme` or `variation`, and `returns_in_same_key` is recorded alongside the confidence rather than folded into it, because distinguishing a tonic recapitulation from a transposed restatement is exactly what downstream form analysis needs.
+
+## Hosting the demo
+
+The deployed instance **serves; it never ingests**. Everything an answer or a
+rendered score is built from is already in the database, so the image carries no
+`.krn` submodule, no `data/mei`, and no commentary texts — `.dockerignore` keeps
+them and every build/ingest script out. The database is the only state: a dump
+restores onto any Postgres with pgvector (132 MB, inside Neon's and Supabase's
+free tiers), and the container is disposable.
+
+Three things had to change before this worked, and each is easy to undo by
+accident:
+
+- **`score_assets` stores the MEI text, not only a path** (migration 009).
+  `get_work_mei` used to read `data/mei/…` off disk, a directory that is derived,
+  gitignored, and only produced by a full ingest — so a host that had not run one
+  served a 404 for every score. `store_asset` now takes the content, `ingest_scores.py`
+  passes it, and `backfill_mei.py` fills an existing database without re-ingesting.
+  The path fallback remains for pre-009 rows on a development machine.
+- **The server is threaded.** An answer is several seconds of tool calls and model
+  round-trips; on the old `HTTPServer` that blocked *every* other request, including
+  the page itself and the score it renders. `ThreadingHTTPServer` is the whole fix,
+  and reverting it looks harmless right up until a second visitor arrives.
+- **`/api/ask` is the only endpoint that spends money**, and on a public URL it spends
+  the deployment's key for whoever asks. `ALLOWED_CHAT_PROVIDERS` restricts the picker
+  and the endpoint to free-tier, tool-calling providers (unset means "anything with a
+  key present", which is right locally and wrong in public); `ASK_RATE_LIMIT` /
+  `ASK_RATE_WINDOW` cap questions per address. That address is only believable behind a
+  proxy, so forwarded headers are read **only** when `TRUST_PROXY` is set — fly sets
+  `Fly-Client-IP`, and without the flag every visitor shares the proxy's one bucket.
+  `PORT` comes from the environment, since the host assigns it.
 
 ## Open work
 

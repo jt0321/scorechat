@@ -48,6 +48,7 @@ class ScoreAsset(Base):
     work_id     = Column(Integer, ForeignKey("works.id", ondelete="CASCADE"), nullable=False)
     asset_type  = Column(Text, nullable=False)
     file_path   = Column(Text, nullable=False)
+    content     = Column(Text)
     created_at  = Column(TIMESTAMP(timezone=True), server_default=func.now())
 
     work = relationship("Work", back_populates="assets")

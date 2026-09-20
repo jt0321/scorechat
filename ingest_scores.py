@@ -227,7 +227,10 @@ def main(symbolic_only: bool):
             # Generate MEI file dynamically using Verovio (needed for SVG rendering)
             mei_path = score_to_mei(str(krn), output_dir=MEI_DIR)
             if mei_path:
-                store_asset(work_id, "mei", str(mei_path))
+                # Stored as text as well as a path: data/mei is derived and
+                # gitignored, so a deployed instance has no copy to read.
+                store_asset(work_id, "mei", str(mei_path),
+                            content=mei_path.read_text(encoding="utf-8"))
                 click.echo(f"   ✓ MEI file generated → {mei_path.name}")
             else:
                 click.echo("   ✗ MEI generation failed.")
