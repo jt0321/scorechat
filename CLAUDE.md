@@ -61,7 +61,8 @@ python server.py                    # API + static HTML/JS client at http://loca
 Deploying it (see "Hosting the demo" below):
 ```bash
 docker build -t scorechat:demo .    # runtime only: no corpus, no ingestion
-fly deploy                          # fly.toml; DATABASE_URL + a provider key as secrets
+fly deploy --ha=false               # fly.toml; DATABASE_URL + a provider key as secrets
+fly scale count 1                   # if a deploy already made the default HA pair
 ```
 
 Tests:
@@ -149,6 +150,15 @@ accident:
   proxy, so forwarded headers are read **only** when `TRUST_PROXY` is set — fly sets
   `Fly-Client-IP`, and without the flag every visitor shares the proxy's one bucket.
   `PORT` comes from the environment, since the host assigns it.
+
+Two things bit the first deploy and neither is visible locally. **A hosted
+provider's connection string starts `postgres://`** — Neon, Supabase, Heroku and
+fly all print it that way — and SQLAlchemy 2 dropped that alias, failing with
+`Can't load plugin: sqlalchemy.dialects:postgres`, which reads like a missing
+driver rather than a one-word difference in a secret. `db/session.py`'s
+`normalise_url` accepts both. And **a deploy creates a highly-available pair of
+machines** unless told otherwise, which for a demo is two idle machines and twice
+the bill: deploy with `--ha=false`, or `fly scale count 1` after the fact.
 
 ## Open work
 

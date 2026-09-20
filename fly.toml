@@ -1,45 +1,34 @@
-# fly.io deployment for the demo. `fly launch --no-deploy` will rewrite `app`;
-# everything below is what this project actually needs.
+# fly.toml app configuration file generated for scorechat on 2026-09-20T22:43:50Z
 #
-# Secrets (never in this file):
-#   fly secrets set DATABASE_URL=postgres://...   # Neon/Supabase, sslmode=require
-#   fly secrets set GEMINI_API_KEY=...
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
 
-app            = "scorechat"
-primary_region = "iad"
+app = 'scorechat'
+primary_region = 'iad'
 
 [build]
-
 [env]
-  PORT = "8080"
-  # The public URL answers with this deployment's API key, so it offers only the
-  # free-tier providers and only a few questions per address.
-  ALLOWED_CHAT_PROVIDERS = "gemini,openrouter"
-  ASK_RATE_LIMIT  = "20"
-  ASK_RATE_WINDOW = "3600"
-  # fly's proxy sets Fly-Client-IP; without this every request rate-limits as
-  # the proxy's own address, which is one bucket for the whole internet.
-  TRUST_PROXY = "1"
+  ALLOWED_CHAT_PROVIDERS = 'gemini,openrouter'
+  ASK_RATE_LIMIT = '20'
+  ASK_RATE_WINDOW = '3600'
+  PORT = '8080'
+  TRUST_PROXY = '1'
 
 [http_service]
-  internal_port       = 8080
-  force_https         = true
-  # Scale to zero between visitors — a demo is idle nearly all the time. The
-  # cost of that is a cold start on the first question after a quiet period.
-  auto_stop_machines  = "stop"
+  internal_port = 8080
+  force_https = true
+  auto_stop_machines = 'stop'
   auto_start_machines = true
   min_machines_running = 0
 
   [[http_service.checks]]
-    interval = "30s"
-    timeout  = "5s"
-    method   = "GET"
-    # Cheap, but it does touch the database, so a broken DATABASE_URL fails the
-    # check rather than serving a page whose every question errors.
-    path     = "/api/works"
+    interval = '30s'
+    timeout = '5s'
+    method = 'GET'
+    path = '/api/works'
 
 [[vm]]
-  # music21 and langchain are large imports; 256MB is not enough to hold them.
-  memory    = "512mb"
-  cpu_kind  = "shared"
-  cpus      = 1
+  memory = '512mb'
+  cpu_kind = 'shared'
+  cpus = 1
+  memory_mb = 512

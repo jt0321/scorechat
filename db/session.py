@@ -8,10 +8,23 @@ _engine = None
 _Session = None
 
 
+def normalise_url(url: str) -> str:
+    """Accept the `postgres://` URL hosted providers hand out.
+
+    Neon, Supabase, Heroku and fly all print connection strings with the
+    `postgres://` scheme, but SQLAlchemy 2 dropped that alias and fails with
+    `Can't load plugin: sqlalchemy.dialects:postgres` — which reads like a
+    missing driver rather than a one-word difference in a secret.
+    """
+    if url.startswith("postgres://"):
+        return "postgresql://" + url[len("postgres://"):]
+    return url
+
+
 def get_session():
     global _engine, _Session
     if _engine is None:
-        url = os.environ["DATABASE_URL"]
+        url = normalise_url(os.environ["DATABASE_URL"])
         _engine = create_engine(url, pool_pre_ping=True)
         _Session = sessionmaker(bind=_engine)
     return _Session()
