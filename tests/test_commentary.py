@@ -230,6 +230,8 @@ def rows_by_source():
     if not sources:
         pytest.skip("commentary sources not fetched")
     catalogue = load_catalogue()
+    if not catalogue.sonatas:
+        pytest.skip("corpus not ingested")
     return {s.key: build_rows(s, catalogue) for s in sources}
 
 
