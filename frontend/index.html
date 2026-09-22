@@ -693,6 +693,9 @@
     <div id="chat-pane">
       <div class="pane-header">
         <h2>Pedagogical Assistant</h2>
+        <button type="button" class="toolbar-btn" id="new-conversation-btn"
+                title="Start over: later questions will not refer back to this conversation"
+                onclick="newConversation()">New conversation</button>
       </div>
       
       <div id="chat-messages">
@@ -786,6 +789,12 @@
   
   <script>
     let vrvToolkit = null;
+    // The conversation so far, sent with every question so a follow-up ("and
+    // the second movement?") or the reply to a clarifying question is read in
+    // context. The server keeps only the last few turns, and only their prose
+    // and the works they touched, so this can grow without the request doing so.
+    let conversation = [];
+    const MAX_SENT_TURNS = 6;
     let works = [];
     let activeWorkId = null;
 
@@ -1011,6 +1020,14 @@
     }
 
     // Handle Form Submit
+    function newConversation() {
+      conversation = [];
+      const messages = document.getElementById("chat-messages");
+      // Keep the greeting, drop everything said since.
+      [...messages.children].slice(1).forEach(el => el.remove());
+      document.getElementById("query-input").focus();
+    }
+
     async function handleQuerySubmit(event) {
       event.preventDefault();
       const inputEl = document.getElementById("query-input");
@@ -1027,11 +1044,25 @@
 
       try {
         const provider = document.getElementById("provider-select").value;
-        const response = await fetch(`/api/ask?question=${encodeURIComponent(query)}`
-          + (provider ? `&provider=${encodeURIComponent(provider)}` : ""));
-        if (!response.ok) throw new Error("Server error");
+        const response = await fetch("/api/ask", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            question: query,
+            provider: provider || null,
+            history: conversation.slice(-MAX_SENT_TURNS),
+          }),
+        });
+        const data = await response.json().catch(() => ({}));
+        if (!response.ok) throw new Error(data.error || `Server error (HTTP ${response.status})`);
 
-        const data = await response.json();
+        // Remembered even when no answer came back: the next question may be
+        // this one rephrased, and it reads better knowing what went before.
+        conversation.push({
+          question: query,
+          answer: data.answer || null,
+          work_ids: data.context_work_ids || [],
+        });
 
         // Remove typing indicator
         removeMessage(loaderId);

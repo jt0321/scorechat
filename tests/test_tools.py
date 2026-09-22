@@ -146,3 +146,71 @@ def test_every_tool_documents_itself_for_the_model():
     call a tool, so an undocumented tool is an uncallable one."""
     for tool_fn in tools.TOOLS:
         assert tool_fn.description and len(tool_fn.description) > 80, tool_fn.name
+
+
+# --- conversation history ---------------------------------------------------
+
+CATALOGUE = [
+    {"id": 166, "opus": "Op. 31 No. 3", "nickname": "The Hunt", "movement_number": 1,
+     "tempo_indication": "Allegro"},
+    {"id": 167, "opus": "Op. 31 No. 3", "nickname": "The Hunt", "movement_number": 2,
+     "tempo_indication": "Scherzo: Allegretto vivace"},
+]
+
+
+def test_earlier_turns_reach_the_model_as_a_conversation(stub, monkeypatch):
+    """A reply to a clarifying question means nothing on its own: "the
+    scherzo" only answers "which movement?" if the model can see it asked."""
+    monkeypatch.setattr(tools, "list_works", lambda: CATALOGUE)
+    model = stub([AIMessage(content="The Scherzo is in A-flat major.")])
+    tools.answer("the scherzo", history=[{
+        "question": "what key is op31/no3 in?",
+        "answer": "Which movement do you mean? It has four.",
+        "work_ids": [166, 167],
+    }])
+    sent = model.seen[0]
+    assert [type(m).__name__ for m in sent] == [
+        "SystemMessage", "HumanMessage", "AIMessage", "HumanMessage"]
+    assert sent[1].content == "what key is op31/no3 in?"
+    assert sent[3].content == "the scherzo"
+    # The works discussed are named from the catalogue, with their work_ids,
+    # so the follow-up need not resolve the sonata again.
+    assert "work_id 167: Op. 31 No. 3 (The Hunt), movement 2, Scherzo" in sent[0].content
+
+
+def test_history_from_the_client_is_validated_and_bounded():
+    turns = [{"question": f"q{i}", "answer": "a" * 10_000, "work_ids": [1, "2", True]}
+             for i in range(20)]
+    turns += [{"question": ""}, "not a turn", {"answer": "no question"}]
+    cleaned = tools.clean_history(turns)
+    assert len(cleaned) == tools.MAX_HISTORY_TURNS
+    assert cleaned[-1]["question"] == "q19"          # the most recent are kept
+    assert len(cleaned[-1]["answer"]) <= tools.MAX_HISTORY_ANSWER_CHARS + 2
+    assert cleaned[-1]["work_ids"] == [1]
+    assert tools.clean_history("nonsense") == []
+
+
+def test_a_work_id_the_corpus_lacks_is_dropped_from_the_context(monkeypatch):
+    monkeypatch.setattr(tools, "list_works", lambda: CATALOGUE)
+    context = tools._works_in_context([{"question": "q", "answer": None,
+                                        "work_ids": [999_999, 166]}])
+    assert "999999" not in context and "work_id 166" in context
+
+
+def test_a_turn_reports_the_works_it_was_about():
+    """A sonata named without a movement contributes all its movements, so the
+    next turn's "the second one" has something to refer to."""
+    trace = [
+        {"tool": "resolve_work_tool", "args": {"query": "op31/no3"},
+         "result": {"resolved": None, "sonata": {"movements": [
+             {"work_id": 166}, {"work_id": 167}]}}},
+        {"tool": "get_key_plan_tool", "args": {"work_id": 167}, "result": {}},
+    ]
+    assert tools.context_work_ids(trace) == [166, 167]
+
+
+def test_the_answer_returns_this_turns_context_for_the_next(stub, monkeypatch):
+    monkeypatch.setattr(tools.analysis_api, "get_key_plan", lambda *a, **k: {"regions": []})
+    stub([AIMessage(content="", tool_calls=[call("get_key_plan_tool", {"work_id": 42})]),
+          AIMessage(content="ok")])
+    assert tools.answer("key plan?")["context_work_ids"] == [42]

@@ -66,6 +66,10 @@ def _rate_limited(client_ip: str) -> int | None:
     return None
 
 
+# Big enough for a question and its recent history, which the server clips anyway.
+MAX_ASK_BODY_BYTES = 64 * 1024
+
+
 class ScoreChatHandler(SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         # Serve static files from the frontend directory
@@ -86,6 +90,63 @@ class ScoreChatHandler(SimpleHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Origin", "*")
         self.end_headers()
         self.wfile.write(body)
+
+    def _ask(self, question, provider, model, history=None) -> None:
+        """Answer one question. GET carries a lone question; POST adds the
+        conversation so far, which a follow-up or the reply to a clarifying
+        question cannot be understood without."""
+        if not isinstance(question, str) or not question.strip():
+            self._send_json(400, {"error": "Missing question parameter"})
+            return
+        if provider and ALLOWED_PROVIDERS and provider not in ALLOWED_PROVIDERS:
+            self._send_json(403, {"error": f"Provider '{provider}' is not enabled "
+                                           f"on this deployment."})
+            return
+        retry_after = _rate_limited(self._client_ip())
+        if retry_after is not None:
+            self._send_json(429, {"error": f"Rate limit reached "
+                                           f"({ASK_RATE_LIMIT} questions per "
+                                           f"{ASK_RATE_WINDOW // 60} minutes). "
+                                           f"Try again in {retry_after}s."})
+            return
+        try:
+            from pipeline.providers import CHAT_PROVIDERS
+            from pipeline.tools import answer
+            if provider and provider not in CHAT_PROVIDERS:
+                # Named rather than silently ignored: falling back to the
+                # env default would answer with a model the user did not
+                # pick and give no sign of it.
+                self._send_json(400, {"error": f"Unknown provider '{provider}'. "
+                                               f"Supported: {', '.join(CHAT_PROVIDERS)}."})
+                return
+            self._send_json(200, answer(question.strip(), model=model, provider=provider,
+                                        history=history))
+        except Exception as e:
+            self._send_json(500, {"error": str(e)})
+
+    def do_POST(self) -> None:
+        if urllib.parse.urlparse(self.path).path != "/api/ask":
+            self._send_json(404, {"error": "Not found"})
+            return
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            length = 0
+        if length <= 0 or length > MAX_ASK_BODY_BYTES:
+            self._send_json(413 if length > 0 else 400,
+                            {"error": "Request body missing or too large"})
+            return
+        try:
+            body = json.loads(self.rfile.read(length))
+        except (ValueError, UnicodeDecodeError):
+            self._send_json(400, {"error": "Request body is not JSON"})
+            return
+        if not isinstance(body, dict):
+            self._send_json(400, {"error": "Request body must be a JSON object"})
+            return
+        text_or_none = lambda value: value if isinstance(value, str) and value else None
+        self._ask(body.get("question"), text_or_none(body.get("provider")),
+                  text_or_none(body.get("model")), body.get("history"))
 
     def do_GET(self):
         parsed_url = urllib.parse.urlparse(self.path)
@@ -147,36 +208,9 @@ class ScoreChatHandler(SimpleHTTPRequestHandler):
         # bar ranges out of the calls' arguments to open the score at them.
         if parsed_url.path == "/api/ask":
             query_params = urllib.parse.parse_qs(parsed_url.query)
-            question = query_params.get("question", [""])[0]
-            if not question:
-                self._send_json(400, {"error": "Missing question parameter"})
-                return
-            provider = query_params.get("provider", [""])[0] or None
-            model = query_params.get("model", [""])[0] or None
-            if provider and ALLOWED_PROVIDERS and provider not in ALLOWED_PROVIDERS:
-                self._send_json(403, {"error": f"Provider '{provider}' is not enabled "
-                                               f"on this deployment."})
-                return
-            retry_after = _rate_limited(self._client_ip())
-            if retry_after is not None:
-                self._send_json(429, {"error": f"Rate limit reached "
-                                               f"({ASK_RATE_LIMIT} questions per "
-                                               f"{ASK_RATE_WINDOW // 60} minutes). "
-                                               f"Try again in {retry_after}s."})
-                return
-            try:
-                from pipeline.providers import CHAT_PROVIDERS
-                from pipeline.tools import answer
-                if provider and provider not in CHAT_PROVIDERS:
-                    # Named rather than silently ignored: falling back to the
-                    # env default would answer with a model the user did not
-                    # pick and give no sign of it.
-                    self._send_json(400, {"error": f"Unknown provider '{provider}'. "
-                                                   f"Supported: {', '.join(CHAT_PROVIDERS)}."})
-                    return
-                self._send_json(200, answer(question, model=model, provider=provider))
-            except Exception as e:
-                self._send_json(500, {"error": str(e)})
+            self._ask(query_params.get("question", [""])[0],
+                      query_params.get("provider", [""])[0] or None,
+                      query_params.get("model", [""])[0] or None)
             return
 
         # Fallback to default static file serving

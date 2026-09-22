@@ -21,10 +21,22 @@ import json
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.tools import tool
 
+from db.store import list_works
 from pipeline import analysis_api
 from pipeline.providers import chat_provider_ready, get_chat_model
 
 MAX_TOOL_ITERATIONS = 8
+
+# How much of a conversation a question carries. Enough for a follow-up ("and
+# the second movement?") or a reply to a clarifying question to make sense;
+# small enough that a free-tier context window and rate budget survive it.
+# Earlier turns travel as their prose only -- never their tool results, which
+# are most of a turn's tokens -- plus the works they touched, so a follow-up
+# can reuse a work_id instead of resolving the work again.
+MAX_HISTORY_TURNS = 6
+MAX_HISTORY_QUESTION_CHARS = 1_000
+MAX_HISTORY_ANSWER_CHARS = 1_500
+MAX_CONTEXT_WORKS = 12
 
 
 def _text(content) -> str:
@@ -181,6 +193,23 @@ state a musical fact the tools did not give you: no bar number you were not
 told, no key you did not read, no formal label you did not derive from evidence
 you can name. If the tools do not cover the question, say so plainly.
 
+The *work* is the whole sonata: Op. 31 No. 3 ("The Hunt") is one work in four
+movements, the third of three sonatas published together as Op. 31. Each
+movement has its own work_id, the way a recording gives each movement its own
+track, and musicians often name a movement by its heading rather than its
+number ("the Scherzo", "the fugue" for Op. 106/iv). When a question names a
+sonata without a movement, `sonata` in resolve_work_tool's result gives every
+movement's heading and key.
+
+A question may follow earlier ones in the same conversation. Read it against
+them: "the second movement", "that passage", "and in the recapitulation?" mean
+the work and bars already under discussion, and a short reply to a question you
+asked ("the scherzo", "Op. 31 No. 3") answers that question -- combine it with
+the original request rather than treating it as a new one. When a question is
+genuinely ambiguous, ask one short clarifying question instead of guessing.
+Earlier answers are your own prose, not tool results: re-fetch any fact you
+need to state again rather than repeating it from memory.
+
 Work through a question in this order: resolve the movement first, then gather
 what you need, then answer. Call several tools when a question needs them -- "is
 this the recapitulation?" wants the recurrences, the repeat scheme and the key
@@ -238,7 +267,92 @@ def _tool_result(call: dict) -> ToolMessage:
     return ToolMessage(content=payload, tool_call_id=call["id"])
 
 
-def answer(question: str, model: str | None = None, provider: str | None = None) -> dict:
+def _clip(text: str, limit: int) -> str:
+    return text if len(text) <= limit else text[:limit].rstrip() + " …"
+
+
+def clean_history(history) -> list[dict]:
+    """The last few turns of a conversation, in a shape safe to send a model.
+
+    History arrives from the client, so it is validated here rather than
+    trusted: wrong types are dropped, text is clipped, and only the most recent
+    turns are kept, so a long conversation cannot inflate every request.
+    """
+    turns = []
+    for turn in history if isinstance(history, list) else []:
+        if not isinstance(turn, dict):
+            continue
+        question, reply = turn.get("question"), turn.get("answer")
+        if not isinstance(question, str) or not question.strip():
+            continue
+        work_ids = [w for w in turn.get("work_ids") or []
+                    if isinstance(w, int) and not isinstance(w, bool)]
+        turns.append({
+            "question": _clip(question.strip(), MAX_HISTORY_QUESTION_CHARS),
+            "answer": _clip(reply.strip(), MAX_HISTORY_ANSWER_CHARS)
+                      if isinstance(reply, str) and reply.strip() else None,
+            "work_ids": work_ids,
+        })
+    return turns[-MAX_HISTORY_TURNS:]
+
+
+def context_work_ids(trace: list[dict]) -> list[int]:
+    """The movements a turn was about, most recent last: what it resolved, what
+    its other calls were made on, and -- when it named a whole sonata -- that
+    sonata's movements, so "the second one" can be answered next turn."""
+    ids: list[int] = []
+    for step in trace:
+        result, args = step.get("result") or {}, step.get("args") or {}
+        if step.get("tool") == "resolve_work_tool":
+            if result.get("resolved"):
+                ids.append(result["resolved"]["work_id"])
+            elif result.get("sonata"):
+                ids.extend(m["work_id"] for m in result["sonata"]["movements"])
+        if isinstance(args.get("work_id"), int):
+            ids.append(args["work_id"])
+    return list(dict.fromkeys(ids))
+
+
+def _works_in_context(history: list[dict]) -> str | None:
+    """A short list of the works earlier turns were about, for the prompt.
+
+    The ids come from the client, so each is looked up again here and one the
+    corpus does not have is simply dropped; what the model reads is always the
+    catalogue's own description of the work.
+    """
+    wanted = list(dict.fromkeys(w for turn in reversed(history) for w in turn["work_ids"]))
+    catalogue = {w["id"]: w for w in list_works()} if wanted else {}
+    lines = []
+    for work_id in wanted[:MAX_CONTEXT_WORKS]:
+        work = catalogue.get(work_id)
+        if work is None:
+            continue
+        nickname = f" ({work['nickname']})" if work.get("nickname") else ""
+        heading = f", {work['tempo_indication']}" if work.get("tempo_indication") else ""
+        lines.append(f"- work_id {work_id}: {work.get('opus')}{nickname}, "
+                     f"movement {work.get('movement_number')}{heading}")
+    return "\n".join(lines) or None
+
+
+def _conversation(question: str, history: list[dict]) -> list:
+    system = SYSTEM_PROMPT
+    works = _works_in_context(history)
+    if works:
+        system += ("\n\nWorks discussed earlier in this conversation, most recent "
+                   "first. A follow-up about one of these can use its work_id "
+                   "directly, without resolving it again:\n" + works)
+    messages = [SystemMessage(content=system)]
+    for turn in history:
+        messages.append(HumanMessage(content=turn["question"]))
+        # A turn that failed still happened: the user asked it, and the next
+        # question may be a rephrasing of it.
+        messages.append(AIMessage(content=turn["answer"] or "(No answer was given.)"))
+    messages.append(HumanMessage(content=question))
+    return messages
+
+
+def answer(question: str, model: str | None = None, provider: str | None = None,
+           history: list[dict] | None = None) -> dict:
     """Answer one question, running whatever tool calls the model asks for.
 
     Returns the prose answer plus the full trace of tool calls, because the
@@ -249,21 +363,26 @@ def answer(question: str, model: str | None = None, provider: str | None = None)
     as the default; the caller passes a name, never a key. A provider whose
     model cannot call tools will answer with an empty trace, which is the
     signal to distrust the answer rather than a failure to report here.
+
+    `history` is the conversation so far, as `{question, answer, work_ids}`
+    turns (see `clean_history`); the result's `context_work_ids` is this turn's
+    entry for the next one.
     """
     if not chat_provider_ready(provider):
         which = provider or "the configured provider"
-        return {"answer": None, "trace": [],
+        return {"answer": None, "trace": [], "context_work_ids": [],
                 "error": f"No API key is configured for {which}; see .env.example."}
 
     llm = get_chat_model(model=model, temperature=0.2, provider=provider).bind_tools(TOOLS)
-    messages = [SystemMessage(content=SYSTEM_PROMPT), HumanMessage(content=question)]
+    messages = _conversation(question, clean_history(history))
     trace: list[dict] = []
 
     for _ in range(MAX_TOOL_ITERATIONS):
         reply: AIMessage = llm.invoke(messages)
         messages.append(reply)
         if not reply.tool_calls:
-            return {"answer": _text(reply.content), "trace": trace, "error": None}
+            return {"answer": _text(reply.content), "trace": trace,
+                    "context_work_ids": context_work_ids(trace), "error": None}
         for call in reply.tool_calls:
             result = _tool_result(call)
             messages.append(result)
@@ -277,4 +396,5 @@ def answer(question: str, model: str | None = None, provider: str | None = None)
                 "stopped short of a full search."))
     reply = llm.invoke(messages)
     return {"answer": _text(reply.content), "trace": trace,
+            "context_work_ids": context_work_ids(trace),
             "error": f"Stopped after {MAX_TOOL_ITERATIONS} rounds of tool calls."}
