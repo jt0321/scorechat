@@ -39,7 +39,7 @@ from analysis.span_relations import (
 )
 from db.store import (
     get_measure_evidence, get_notated_sections, get_source_text,
-    get_span_relations, list_works, load_work_features,
+    get_movement_keys, get_span_relations, list_works, load_work_features,
 )
 
 MAX_EVIDENCE_MEASURES = 24
@@ -79,7 +79,10 @@ def _movement_tokens(text: str) -> tuple[str, int | None]:
     return cleaned, movement
 
 
-_OPUS = re.compile(r"\bop(?:us|\.)?\s*(\d+)\s*(?:(?:no|nr|number)\.?\s*(\d+))?", re.I)
+# The separator between opus and number is whatever the user typed: "Op. 31
+# No. 3", "op 31, no 3", "op31/no3" and "op31no3" all name one sonata.
+_OPUS = re.compile(
+    r"\bop(?:us|\.)?\s*(\d+)[\s/,\-]*(?:(?:no|nr|number)\.?\s*(\d+))?", re.I)
 
 
 def _opus_designation(text: str) -> str | None:
@@ -119,7 +122,124 @@ def _score_work(work: dict, needle: str) -> int:
     return score
 
 
+# How a movement is named when it is not numbered: by the heading it opens with
+# ("the Scherzo", "the Adagio sostenuto", "the fugue" for Op. 106/iv, whose full
+# heading is "Introduzione: Largo---Fuga: Allegro risoluto"). Words that qualify
+# a tempo rather than name one identify nothing on their own.
+_MARKING_FILLER = {
+    "e", "ed", "con", "ma", "non", "troppo", "molto", "poco", "assai", "piu",
+    "quasi", "un", "una", "di", "il", "la", "le", "l", "alla", "in", "tempo",
+    "mit", "und", "nicht", "zu", "sehr", "quarter", "half", "eighth", "dot",
+}
+# English names for the Italian headings the scores carry.
+_MARKING_SYNONYMS = {
+    "fugue": "fuga", "minuet": "menuetto minuetto", "menuet": "menuetto minuetto",
+    "introduction": "introduzione", "intro": "introduzione", "march": "marcia",
+}
+
+
+def _marking_words(text: str) -> set[str]:
+    return {w for w in re.findall(r"[a-z]+", _fold(text)) if w not in _MARKING_FILLER}
+
+
+def _movement_by_marking(works: list[dict], folded_query: str) -> list[dict]:
+    """The movements of one sonata whose heading the query names, best first.
+
+    Returns only the uniquely best match; a tie (Op. 106's first movement and
+    its fugue are both "Allegro") returns nothing, since guessing between
+    movements would put the answer in the wrong music.
+    """
+    asked = set()
+    for word in re.findall(r"[a-z]+", folded_query):
+        asked.update(_MARKING_SYNONYMS.get(word, word).split())
+    asked -= _MARKING_FILLER
+    scored = sorted(((len(asked & _marking_words(w.get("tempo_indication") or "")), w)
+                     for w in works), key=lambda pair: -pair[0])
+    if not scored or scored[0][0] == 0:
+        return []
+    if len(scored) > 1 and scored[1][0] == scored[0][0]:
+        return []
+    return [scored[0][1]]
+
+
+def _readable_key(key: str | None) -> str | None:
+    """music21's "E- major" / "c# minor" as a reader writes it: "E-flat major",
+    "C-sharp minor". The spelling reaches the model verbatim, and "E- major"
+    is not something to repeat to a musician."""
+    if not key or " " not in key:
+        return key
+    name, mode = key.rsplit(" ", 1)
+    tonic, accidentals = name[0].upper(), name[1:]
+    spelled = {"-": "-flat", "--": "-double-flat", "#": "-sharp", "##": "-double-sharp"}
+    return f"{tonic}{spelled.get(accidentals, accidentals)} {mode}"
+
+
+def _sonata_summary(opus: str) -> dict | None:
+    """The whole sonata one movement belongs to.
+
+    The *work* a musician names is the sonata; the corpus stores each movement
+    as its own work_id, the way a recording has one track per movement. This is
+    what lets an answer say "Op. 31 No. 3 has four movements" and give each one's
+    heading and key, rather than seeing only the movement it was asked about.
+    """
+    movements = [w for w in list_works() if (w.get("opus") or "") == opus]
+    if not movements:
+        return None
+    keys = get_movement_keys([w["id"] for w in movements])
+    first = movements[0]
+    return {
+        "opus": opus,
+        "nickname": first.get("nickname") or None,
+        "sonata_number": first.get("work_number"),
+        "movement_count": len(movements),
+        "movements": [{
+            "work_id": w["id"],
+            "movement_number": w.get("movement_number"),
+            "heading": w.get("tempo_indication"),
+            # Engraved (`*f:`), not estimated: every movement declares one.
+            "key": _readable_key(keys.get(w["id"])),
+        } for w in movements],
+    }
+
+
+def _nickname_in(nickname: str, folded_query: str) -> bool:
+    """Whether the query names a sonata by its nickname. A leading article is
+    optional -- "the Hunt" and "hunt" are the same request."""
+    name = _fold(nickname)
+    return name in folded_query or re.sub(r"^the\s+", "", name) in folded_query
+
+
 def resolve_work(query: str, limit: int = 5) -> dict:
+    """Find the movement a free-text request means, and the sonata it is in.
+
+    Every result that narrows to one sonata carries `sonata`: its opus,
+    nickname and every movement with its heading and engraved key.
+    """
+    result = _resolve_movement(query, limit)
+    opera = {m["opus"] for m in result["matches"]}
+    result["sonata"] = _sonata_summary(opera.pop()) if len(opera) == 1 else None
+    if result["resolved"] is None and result["sonata"]:
+        sonata = result["sonata"]
+        name = f" ({sonata['nickname']})" if sonata["nickname"] else ""
+        result["note"] = (
+            f"The request names the sonata {sonata['opus']}{name}, which has "
+            f"{sonata['movement_count']} movements (listed in `sonata`). Answer "
+            "about the sonata from that, or ask which movement is meant before "
+            "calling a tool that needs a work_id.")
+    elif result["resolved"] is None and len(opera) > 1:
+        # "Op. 31" is a set of three sonatas published together, not one work.
+        base = {re.sub(r"\s+No\.\s*\d+$", "", o) for o in opera if o}
+        if len(base) == 1:
+            opus = base.pop()
+            numbers = sorted({w["opus"] for w in list_works()
+                              if (w.get("opus") or "").startswith(opus + " No.")})
+            result["note"] = (
+                f"{opus} is a set of {len(numbers)} sonatas published "
+                f"together ({', '.join(numbers)}); ask which is meant.")
+    return result
+
+
+def _resolve_movement(query: str, limit: int = 5) -> dict:
     """Find the movement a free-text request means.
 
     Returns every plausible match rather than one, with a `resolved` work only
@@ -137,16 +257,22 @@ def resolve_work(query: str, limit: int = 5) -> dict:
     designation = _opus_designation(query)
     if designation:
         exact = [w for w in works if (w.get("opus") or "") == designation]
-        if exact:
-            works = exact
+        # A bare "Op. 31" names the set, so it narrows to the set's sonatas.
+        in_set = [w for w in works
+                  if (w.get("opus") or "").startswith(designation + " No.")]
+        if exact or in_set:
+            works = exact or in_set
 
     # A nickname names one sonata just as an opus does, so it narrows the same
     # way -- "the finale of the Moonlight" needs the field down to one work
     # before "finale" can mean anything.
     folded = _fold(query)
-    named = [w for w in works if w.get("nickname") and _fold(w["nickname"]) in folded]
+    named = [w for w in works if w.get("nickname") and _nickname_in(w["nickname"], folded)]
     if named:
         works = named
+
+    if movement is None and len({w.get("opus") for w in works}) == 1:
+        works = _movement_by_marking(works, folded) or works
 
     if movement is None and LAST_MOVEMENT.search(folded):
         opus_numbers = {w.get("opus") for w in works}
@@ -159,6 +285,12 @@ def resolve_work(query: str, limit: int = 5) -> dict:
     if len(works) == 1:
         return {"resolved": _work_summary(works[0]),
                 "matches": [_work_summary(works[0])], "note": None}
+    if len({w.get("opus") for w in works}) == 1:
+        # Narrowed to one sonata by opus or nickname, with no single movement
+        # named: the movements are the answer, not a ranking of them by
+        # whatever words are left in the query.
+        return {"resolved": None, "matches": [_work_summary(w) for w in works],
+                "note": None}
 
     scored = sorted(
         ((_score_work(w, needle), w) for w in works),
@@ -193,6 +325,7 @@ def _work_summary(work: dict) -> dict:
         "opus": work.get("opus"),
         "nickname": work.get("nickname"),
         "movement_number": work.get("movement_number"),
+        "heading": work.get("tempo_indication"),
     }
 
 

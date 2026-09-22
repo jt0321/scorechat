@@ -908,8 +908,10 @@
       const region = r => `${r.value} mm. ${r.measure_start}\u2013${r.measure_end}`;
       switch (toolName) {
         case "resolve_work_tool":
+          const sonata = result.sonata;
           parts.push(result.resolved ? workLabel(result.resolved)
-                                     : `${(result.matches || []).length} candidates`);
+                     : sonata ? `${sonata.opus}${sonata.nickname ? ` (${sonata.nickname})` : ""}, ${sonata.movement_count} movements`
+                     : `${(result.matches || []).length} candidates`);
           if (result.resolved && result.resolved.reference_edition) {
             parts.push(`bar numbers from ${result.resolved.reference_edition}`);
           }

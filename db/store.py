@@ -324,6 +324,22 @@ def get_global_key(work_id: int, measure_index: int) -> str | None:
         return row[0].get("global_key") if row else None
 
 
+def get_movement_keys(work_ids: list[int]) -> dict[int, str]:
+    """Each movement's `global_key` -- the key its source declares -- read off
+    its first analysed measure, for several movements in one query."""
+    if not work_ids:
+        return {}
+    with session_scope() as session:
+        rows = session.execute(text("""
+            SELECT DISTINCT ON (sm.work_id) sm.work_id, ma.analysis_data->>'global_key'
+            FROM score_measures sm
+            JOIN measure_analyses ma ON ma.measure_id = sm.id
+            WHERE sm.work_id = ANY(:ids) AND ma.analysis_data ? 'global_key'
+            ORDER BY sm.work_id, sm.measure_index, ma.created_at DESC, ma.id DESC
+        """), {"ids": list(work_ids)}).all()
+        return {work_id: key for work_id, key in rows if key}
+
+
 def get_local_key(work_id: int, measure_index: int) -> str | None:
     """The windowed local_key estimate for one measure, or None if absent."""
     with session_scope() as session:

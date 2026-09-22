@@ -45,12 +45,17 @@ def _text(content) -> str:
 
 @tool
 def resolve_work_tool(query: str) -> str:
-    """Find which ingested movement a free-text description refers to.
+    """Find which ingested movement a free-text description refers to, and the
+    sonata it belongs to.
 
     Call this first, before any other tool: everything else needs a work_id.
-    Accepts nicknames, opus numbers and movement numbers in any usual form
-    ("moonlight 3rd movement", "op 27 no 2 iii", "Waldstein mvt 1").
-    If the result is ambiguous, ask the user which movement they mean rather
+    Pass the user's own wording. Accepts nicknames, opus numbers however they
+    are spaced or punctuated ("op31/no3", "Op. 31, No. 3"), movement numbers
+    ("moonlight 3rd movement", "op 27 no 2 iii") and movement headings ("the
+    Scherzo of the Hunt", "the fugue of Op. 106").
+    `sonata` lists every movement of the sonata with its heading and engraved
+    key: use it when the question is about the whole work. If no single
+    movement is resolved and the question needs one, ask which is meant rather
     than picking one.
     """
     return json.dumps(analysis_api.resolve_work(query))

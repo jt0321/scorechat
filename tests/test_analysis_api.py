@@ -51,6 +51,61 @@ def test_an_opus_and_number_are_matched_as_a_unit():
     assert resolved["opus"] == "Op. 27 No. 1"
 
 
+@pytest.mark.parametrize("query", [
+    "op31/no3", "Op.31/No.3", "op 31, no 3", "op31no3", "Op. 31 No. 3", "the Hunt",
+])
+def test_a_sonata_is_found_however_its_opus_is_punctuated(query):
+    """Users drop the spaces and periods; "op31/no3" is still one sonata, not
+    the whole of Op. 31."""
+    result = resolve_work(query)
+    if not result["matches"]:
+        pytest.skip("corpus not ingested")
+    assert result["sonata"]["opus"] == "Op. 31 No. 3"
+    assert result["resolved"] is None          # no movement was named
+    assert result["note"]
+
+
+def test_a_sonata_lists_its_movements_with_headings_and_engraved_keys():
+    """The work is the sonata; its movements are what a recording splits into
+    tracks. Op. 31 No. 3's Scherzo is the one movement not in E-flat."""
+    sonata = resolve_work("op31/no3")["sonata"]
+    if sonata is None:
+        pytest.skip("corpus not ingested")
+    assert sonata["nickname"] == "The Hunt"
+    assert [(m["movement_number"], m["key"]) for m in sonata["movements"]] == [
+        (1, "E-flat major"), (2, "A-flat major"), (3, "E-flat major"), (4, "E-flat major")]
+    assert sonata["movements"][1]["heading"].startswith("Scherzo")
+
+
+@pytest.mark.parametrize("query,opus,expected_movement", [
+    ("the fugue of op 106", "Op. 106", 4),              # "Introduzione: Largo---Fuga: ..."
+    ("Hammerklavier Fuga: Allegro risoluto", "Op. 106", 4),
+    ("the scherzo of the hunt", "Op. 31 No. 3", 2),
+    ("op31/no3 minuet", "Op. 31 No. 3", 3),             # heading reads "Menuetto"
+])
+def test_a_movement_is_found_by_its_heading(query, opus, expected_movement):
+    resolved = resolve_work(query)["resolved"]
+    if resolved is None:
+        pytest.skip("corpus not ingested")
+    assert (resolved["opus"], resolved["movement_number"]) == (opus, expected_movement)
+
+
+def test_a_heading_shared_by_two_movements_resolves_to_nothing():
+    """Op. 106's first movement and its fugue are both marked Allegro."""
+    result = resolve_work("hammerklavier allegro")
+    if not result["matches"]:
+        pytest.skip("corpus not ingested")
+    assert result["resolved"] is None
+
+
+def test_a_bare_opus_names_the_set_not_one_sonata():
+    result = resolve_work("op 31")
+    if not result["matches"]:
+        pytest.skip("corpus not ingested")
+    assert result["resolved"] is None and result["sonata"] is None
+    assert "set of 3 sonatas" in result["note"]
+
+
 def test_an_ambiguous_request_resolves_to_nothing_and_says_why():
     """Guessing between movements would put every later answer in the wrong
     music, so ambiguity is handed back rather than resolved."""
