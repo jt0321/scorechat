@@ -141,7 +141,6 @@
 
     /* Right pane: Score visualizer */
     #score-pane {
-      width: 55%;
       display: flex;
       flex-direction: column;
       height: 100%;
@@ -308,6 +307,10 @@
       padding: 0.25rem 0.4rem;
       font-family: inherit;
       font-size: 0.75rem;
+      /* Shrink with a narrowed chat pane rather than spill past its divider. */
+      flex: 0 1 auto;
+      min-width: 0;
+      text-overflow: ellipsis;
     }
 
     .provider-row select option:disabled {
@@ -331,6 +334,7 @@
 
     #query-input {
       flex: 1;
+      min-width: 0;
       background: transparent;
       border: none;
       outline: none;
@@ -549,20 +553,117 @@
       border-color: var(--accent);
       color: var(--accent);
     }
+
+    /* Resizable frames. Widths are set inline by the resizer script and
+       remembered per browser; these are the defaults and the limits. */
+    .resize-handle {
+      flex: 0 0 6px;
+      margin: 0 -3px;           /* straddle the border without taking width */
+      position: relative;
+      z-index: 5;
+      cursor: col-resize;
+      touch-action: none;
+      background: transparent;
+      transition: background 0.15s;
+    }
+
+    .resize-handle:hover,
+    .resize-handle:focus-visible,
+    .resize-handle.dragging {
+      background: var(--accent);
+      outline: none;
+    }
+
+    body.resizing {
+      cursor: col-resize;
+      user-select: none;
+    }
+
+    body.resizing * {
+      transition: none !important;
+    }
+
+    /* Collapsing the works list down to a rail that keeps only the toggle. */
+    .sidebar-toggle {
+      background: none;
+      border: 1px solid transparent;
+      border-radius: var(--radius-sm);
+      color: var(--text-muted);
+      cursor: pointer;
+      padding: 0.3rem;
+      display: flex;
+      flex-shrink: 0;
+      transition: var(--transition);
+    }
+
+    .sidebar-toggle:hover,
+    .sidebar-toggle:focus-visible {
+      color: var(--accent);
+      border-color: var(--border);
+      outline: none;
+    }
+
+    aside {
+      min-width: 0;
+      overflow: hidden;
+    }
+
+    .sidebar-header .brand {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      min-width: 0;
+    }
+
+    aside.collapsed {
+      width: 56px !important;
+    }
+
+    aside.collapsed .sidebar-header {
+      padding: 1.5rem 0;
+      justify-content: center;
+    }
+
+    aside.collapsed .sidebar-header .brand,
+    aside.collapsed .sidebar-content {
+      display: none;
+    }
+
+    aside.collapsed + .resize-handle {
+      display: none;
+    }
+
+    #chat-pane {
+      min-width: 0;
+    }
+
+    #score-pane {
+      flex: 1;
+      min-width: 0;
+    }
   </style>
 </head>
 <body>
 
   <!-- Sidebar -->
-  <aside>
+  <aside id="sidebar">
     <div class="sidebar-header">
-      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--accent)">
-        <path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
-      </svg>
-      <h1>ScoreChat</h1>
+      <button type="button" class="sidebar-toggle" id="sidebar-toggle"
+              aria-controls="sidebar-content" aria-expanded="true"
+              title="Hide works list" onclick="toggleSidebar()">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+          <path d="M4 6h16M4 12h16M4 18h16"/>
+        </svg>
+      </button>
+      <span class="brand">
+        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="color: var(--accent)">
+          <path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/>
+        </svg>
+        <h1>ScoreChat</h1>
+      </span>
     </div>
     
-    <div class="sidebar-content">
+    <div class="sidebar-content" id="sidebar-content">
       <div class="sidebar-section">
         <div class="sidebar-section-title">Works Ingested</div>
         <ul class="score-list" id="works-list">
@@ -581,6 +682,9 @@
       </div>
     </div>
   </aside>
+  <div class="resize-handle" id="sidebar-resizer" role="separator" tabindex="0"
+       aria-orientation="vertical" aria-controls="sidebar" aria-label="Resize works list"
+       title="Drag to resize · double-click to reset"></div>
 
   <!-- Main Split-Screen Layout -->
   <main>
@@ -622,6 +726,10 @@
         </form>
       </div>
     </div>
+
+    <div class="resize-handle" id="pane-resizer" role="separator" tabindex="0"
+         aria-orientation="vertical" aria-controls="chat-pane" aria-label="Resize chat and score"
+         title="Drag to resize · double-click to reset"></div>
 
     <!-- Right Score Pane -->
     <div id="score-pane">
@@ -737,7 +845,98 @@
       }
       loadWorksList();
       loadProviders();
+      initLayout();
     });
+
+    // --- Layout: resizable frames and the collapsible works list -----------
+    // Sizes are a per-browser convenience, so storage failing (a private
+    // window) just means the defaults.
+    function readLayout(key) {
+      try { return localStorage.getItem(`scorechat.layout.${key}`); } catch (err) { return null; }
+    }
+
+    function writeLayout(key, value) {
+      try { localStorage.setItem(`scorechat.layout.${key}`, value); } catch (err) { /* defaults next time */ }
+    }
+
+    function applySidebarCollapsed(collapsed) {
+      const sidebar = document.getElementById("sidebar");
+      const toggle = document.getElementById("sidebar-toggle");
+      sidebar.classList.toggle("collapsed", collapsed);
+      toggle.setAttribute("aria-expanded", String(!collapsed));
+      toggle.title = collapsed ? "Show works list" : "Hide works list";
+    }
+
+    function toggleSidebar() {
+      const collapsed = !document.getElementById("sidebar").classList.contains("collapsed");
+      applySidebarCollapsed(collapsed);
+      writeLayout("sidebarCollapsed", collapsed ? "1" : "0");
+    }
+
+    // A divider that sets one frame's width. `unit` is "px" for the sidebar,
+    // "%" (of the container) for the chat pane so the split survives the
+    // window being resized. Arrow keys nudge it; double-click resets it.
+    function makeResizer({ handle, target, container, unit, min, max, fallback, key }) {
+      const clamp = v => Math.min(max, Math.max(min, v));
+      const apply = v => { target.style.width = `${v}${unit}`; handle.setAttribute("aria-valuenow", Math.round(v)); };
+      handle.setAttribute("aria-valuemin", min);
+      handle.setAttribute("aria-valuemax", max);
+
+      const saved = parseFloat(readLayout(key));
+      apply(Number.isFinite(saved) ? clamp(saved) : fallback);
+
+      const valueAt = clientX => {
+        const box = container.getBoundingClientRect();
+        const px = clientX - target.getBoundingClientRect().left;
+        return clamp(unit === "%" ? (px / box.width) * 100 : px);
+      };
+      const current = () => parseFloat(target.style.width) || fallback;
+
+      handle.addEventListener("pointerdown", event => {
+        event.preventDefault();
+        handle.setPointerCapture(event.pointerId);
+        handle.classList.add("dragging");
+        document.body.classList.add("resizing");
+      });
+      handle.addEventListener("pointermove", event => {
+        if (handle.hasPointerCapture(event.pointerId)) apply(valueAt(event.clientX));
+      });
+      const end = event => {
+        if (!handle.hasPointerCapture(event.pointerId)) return;
+        handle.releasePointerCapture(event.pointerId);
+        handle.classList.remove("dragging");
+        document.body.classList.remove("resizing");
+        writeLayout(key, current());
+      };
+      handle.addEventListener("pointerup", end);
+      handle.addEventListener("pointercancel", end);
+
+      handle.addEventListener("dblclick", () => { apply(fallback); writeLayout(key, fallback); });
+      handle.addEventListener("keydown", event => {
+        const step = (unit === "%" ? 2 : 16) * (event.shiftKey ? 4 : 1);
+        const delta = { ArrowLeft: -step, ArrowRight: step }[event.key];
+        if (delta === undefined) return;
+        event.preventDefault();
+        apply(clamp(current() + delta));
+        writeLayout(key, current());
+      });
+    }
+
+    function initLayout() {
+      applySidebarCollapsed(readLayout("sidebarCollapsed") === "1");
+      makeResizer({
+        handle: document.getElementById("sidebar-resizer"),
+        target: document.getElementById("sidebar"),
+        container: document.body,
+        unit: "px", min: 180, max: 520, fallback: 280, key: "sidebarWidth",
+      });
+      makeResizer({
+        handle: document.getElementById("pane-resizer"),
+        target: document.getElementById("chat-pane"),
+        container: document.querySelector("main"),
+        unit: "%", min: 20, max: 80, fallback: 45, key: "chatWidth",
+      });
+    }
 
     // Fill the model picker from what the server says it can actually use. A
     // provider whose keys are missing is shown disabled rather than hidden, so
