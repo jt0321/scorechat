@@ -14,7 +14,11 @@ dependencies = [
     "psycopg2-binary>=2.9.9",
     "sqlalchemy>=2.0.0",
     # Rendering & Conversion
-    "verovio>=3.15.0",
+    # <6.3: 6.3.0 stopped writing @accid.ges in its MEI, and music21 needs it --
+    # it does not apply a key signature itself -- so the Verovio fallback for
+    # truncated parses loses every signature accidental (Op. 31 No. 3/i: 362
+    # E-flats read as E). tests/test_harmony.py's Op. 31 No. 3 cases catch it.
+    "verovio>=3.15.0,<6.3",
     # Utilities
     "python-dotenv>=1.0.0",
     "requests>=2.31.0",
