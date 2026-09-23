@@ -55,6 +55,25 @@ def test_free_tiers_are_openai_compatible_endpoints(monkeypatch):
     assert "accounts/acct-123/ai/v1" in str(workers.openai_api_base)
 
 
+def test_cloudflare_is_never_sent_null_content(monkeypatch):
+    """An assistant turn that only calls tools goes out as `content: null`,
+    which Workers AI rejects -- so every answer failed after its first tool
+    call. The replay of that turn must carry a string."""
+    from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
+
+    monkeypatch.setenv("CLOUDFLARE_API_KEY", "cf-token")
+    monkeypatch.setenv("CLOUDFLARE_ACCOUNT_ID", "acct-123")
+    workers = providers.get_chat_model(provider="cloudflare")
+
+    call = {"name": "resolve_work_tool", "args": {"query": "Moonlight"}, "id": "call_1"}
+    payload = workers._get_request_payload([
+        HumanMessage("where is the recapitulation?"),
+        AIMessage(content="", tool_calls=[call]),
+        ToolMessage(content="{}", tool_call_id="call_1"),
+    ])
+    assert all(isinstance(m.get("content"), str) for m in payload["messages"])
+
+
 def test_picking_a_provider_does_not_carry_the_env_model_over(monkeypatch):
     """CHAT_MODEL belongs to CHAT_PROVIDER. A Gemini model name passed to
     OpenRouter is a 404, not a fallback, so an explicit provider takes its own

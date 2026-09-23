@@ -184,10 +184,23 @@ def get_chat_model(model: str | None = None, temperature: float = 0.3,
 
     if provider == "cloudflare":
         from langchain_openai import ChatOpenAI
+
+        # An assistant turn that only calls tools is sent with `content: null`,
+        # which OpenAI accepts and Workers AI rejects ("'string' not in 'null'"),
+        # so every answer failed on its second round trip, after the first tool
+        # call. An empty string means the same thing to both.
+        class WorkersAIChat(ChatOpenAI):
+            def _get_request_payload(self, input_, *, stop=None, **kwargs):
+                payload = super()._get_request_payload(input_, stop=stop, **kwargs)
+                for message in payload.get("messages", []):
+                    if message.get("content") is None:
+                        message["content"] = ""
+                return payload
+
         account = os.environ["CLOUDFLARE_ACCOUNT_ID"]
-        return ChatOpenAI(model=model, temperature=temperature,
-                          api_key=os.environ["CLOUDFLARE_API_KEY"],
-                          base_url=f"https://api.cloudflare.com/client/v4/accounts/{account}/ai/v1")
+        return WorkersAIChat(model=model, temperature=temperature,
+                             api_key=os.environ["CLOUDFLARE_API_KEY"],
+                             base_url=f"https://api.cloudflare.com/client/v4/accounts/{account}/ai/v1")
 
     raise ValueError(
         f"Unknown CHAT_PROVIDER '{provider}'. Supported: {', '.join(CHAT_PROVIDERS)}."
