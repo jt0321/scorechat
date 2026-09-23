@@ -288,7 +288,14 @@ Write for a musician reading about the music, not a reader of a data dump. The
 tools return every chord and direction in a range; select the ones that carry
 the passage and leave the rest, and never paste the full list. Quote
 confidences where they bear on a claim and round them sensibly. Cite bar ranges
-as "mm. 17-20"."""
+as "mm. 17-20".
+
+Link what you cite, so the reader can open it in the score beside your answer.
+Write a movement's name as a link to its work_id -- [Arietta](work:180) -- and
+a bar citation as a link to that range in its movement: mm. [17-20](work:180/17-20),
+m. [5](work:180/5), mm. [1-7](work:180/1-7), [10-16](work:180/10-16). Use only
+work_ids a tool gave you. The link text is what the reader sees, so write it
+exactly as you would without the link."""
 
 
 def _tool_result(call: dict) -> ToolMessage:
@@ -332,6 +339,27 @@ def clean_history(history) -> list[dict]:
     return turns[-MAX_HISTORY_TURNS:]
 
 
+def clean_selection(selection) -> dict | None:
+    """The bars the reader has selected in the score viewer, or None.
+
+    Like history, this comes from the client: it is kept only when it names a
+    movement the corpus has and a plausible range of printed bars, and the
+    movement's description is the catalogue's, never the client's.
+    """
+    if not isinstance(selection, dict):
+        return None
+    work_id, start, end = (selection.get(k) for k in ("work_id", "measure_start", "measure_end"))
+    if not all(isinstance(v, int) and not isinstance(v, bool) for v in (work_id, start, end)):
+        return None
+    if not 1 <= start <= end <= 10_000:
+        return None
+    work = next((w for w in list_works() if w["id"] == work_id), None)
+    if work is None:
+        return None
+    return {"work_id": work_id, "measure_start": start, "measure_end": end,
+            "work": _describe_work(work)}
+
+
 def context_work_ids(trace: list[dict]) -> list[int]:
     """The movements a turn was about, most recent last: what it resolved, what
     its other calls were made on, and -- when it named a whole sonata -- that
@@ -344,6 +372,8 @@ def context_work_ids(trace: list[dict]) -> list[int]:
                 ids.append(result["resolved"]["work_id"])
             elif result.get("sonata"):
                 ids.extend(m["work_id"] for m in result["sonata"]["movements"])
+        if step.get("tool") == "outline_sonata_tool":
+            ids.extend(m["work_id"] for m in result.get("movements") or [])
         if isinstance(args.get("work_id"), int):
             ids.append(args["work_id"])
     return list(dict.fromkeys(ids))
@@ -363,20 +393,36 @@ def _works_in_context(history: list[dict]) -> str | None:
         work = catalogue.get(work_id)
         if work is None:
             continue
-        nickname = f" ({work['nickname']})" if work.get("nickname") else ""
-        heading = f", {work['tempo_indication']}" if work.get("tempo_indication") else ""
-        lines.append(f"- work_id {work_id}: {work.get('opus')}{nickname}, "
-                     f"movement {work.get('movement_number')}{heading}")
+        lines.append(f"- work_id {work_id}: {_describe_work(work)}")
     return "\n".join(lines) or None
 
 
-def _conversation(question: str, history: list[dict]) -> list:
+def _describe_work(work: dict) -> str:
+    """A movement as the catalogue names it: "Op. 31 No. 3 (The Hunt),
+    movement 2, Scherzo: Allegretto vivace"."""
+    nickname = f" ({work['nickname']})" if work.get("nickname") else ""
+    heading = f", {work['tempo_indication']}" if work.get("tempo_indication") else ""
+    return f"{work.get('opus')}{nickname}, movement {work.get('movement_number')}{heading}"
+
+
+def _conversation(question: str, history: list[dict], selection: dict | None = None) -> list:
     system = SYSTEM_PROMPT
     works = _works_in_context(history)
     if works:
         system += ("\n\nWorks discussed earlier in this conversation, most recent "
                    "first. A follow-up about one of these can use its work_id "
                    "directly, without resolving it again:\n" + works)
+    if selection:
+        bars = (f"m. {selection['measure_start']}"
+                if selection["measure_start"] == selection["measure_end"]
+                else f"mm. {selection['measure_start']}-{selection['measure_end']}")
+        system += (
+            f"\n\nThe reader has selected {bars} of {selection['work']} "
+            f"(work_id {selection['work_id']}) in the score beside this chat. A question "
+            "that says \"this\", \"these bars\", \"here\" or \"the selection\", or asks about "
+            "a passage without naming one, is about exactly those bars: use that "
+            "work_id and range directly, without resolving the work again. A question "
+            "that names other music is about that music instead.")
     messages = [SystemMessage(content=system)]
     for turn in history:
         messages.append(HumanMessage(content=turn["question"]))
@@ -388,7 +434,7 @@ def _conversation(question: str, history: list[dict]) -> list:
 
 
 def answer(question: str, model: str | None = None, provider: str | None = None,
-           history: list[dict] | None = None) -> dict:
+           history: list[dict] | None = None, selection: dict | None = None) -> dict:
     """Answer one question, running whatever tool calls the model asks for.
 
     Returns the prose answer plus the full trace of tool calls, because the
@@ -403,6 +449,10 @@ def answer(question: str, model: str | None = None, provider: str | None = None,
     `history` is the conversation so far, as `{question, answer, work_ids}`
     turns (see `clean_history`); the result's `context_work_ids` is this turn's
     entry for the next one.
+
+    `selection` is the range the reader has selected in the score viewer, as
+    `{work_id, measure_start, measure_end}` in printed bars (see
+    `clean_selection`); "these bars" in the question means it.
     """
     if not chat_provider_ready(provider):
         which = provider or "the configured provider"
@@ -410,7 +460,7 @@ def answer(question: str, model: str | None = None, provider: str | None = None,
                 "error": f"No API key is configured for {which}; see .env.example."}
 
     llm = get_chat_model(model=model, temperature=0.2, provider=provider).bind_tools(TOOLS)
-    messages = _conversation(question, clean_history(history))
+    messages = _conversation(question, clean_history(history), clean_selection(selection))
     trace: list[dict] = []
 
     for _ in range(MAX_TOOL_ITERATIONS):

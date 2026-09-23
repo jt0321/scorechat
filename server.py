@@ -91,10 +91,11 @@ class ScoreChatHandler(SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
-    def _ask(self, question, provider, model, history=None) -> None:
+    def _ask(self, question, provider, model, history=None, selection=None) -> None:
         """Answer one question. GET carries a lone question; POST adds the
         conversation so far, which a follow-up or the reply to a clarifying
-        question cannot be understood without."""
+        question cannot be understood without, and the bars selected in the
+        score viewer, which "these bars" cannot."""
         if not isinstance(question, str) or not question.strip():
             self._send_json(400, {"error": "Missing question parameter"})
             return
@@ -120,7 +121,7 @@ class ScoreChatHandler(SimpleHTTPRequestHandler):
                                                f"Supported: {', '.join(CHAT_PROVIDERS)}."})
                 return
             self._send_json(200, answer(question.strip(), model=model, provider=provider,
-                                        history=history))
+                                        history=history, selection=selection))
         except Exception as e:
             self._send_json(500, {"error": str(e)})
 
@@ -146,7 +147,8 @@ class ScoreChatHandler(SimpleHTTPRequestHandler):
             return
         text_or_none = lambda value: value if isinstance(value, str) and value else None
         self._ask(body.get("question"), text_or_none(body.get("provider")),
-                  text_or_none(body.get("model")), body.get("history"))
+                  text_or_none(body.get("model")), body.get("history"),
+                  body.get("selection"))
 
     def do_GET(self):
         parsed_url = urllib.parse.urlparse(self.path)

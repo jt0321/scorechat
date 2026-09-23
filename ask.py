@@ -8,6 +8,7 @@ citation: it shows which stored analysis each claim rests on.
 
 from __future__ import annotations
 import json
+import re
 
 # These CLIs read DATABASE_URL and the provider keys straight from the
 # environment, so the .env a developer already has must be loaded before any
@@ -41,7 +42,9 @@ def main(question: tuple[str, ...], model: str | None, trace: bool):
     if result["error"]:
         click.echo(click.style(result["error"], fg="yellow"))
     if result["answer"]:
-        click.echo(result["answer"])
+        # Score links are for the web client; a terminal shows their text.
+        text = re.sub(r"\[([^\]]+)\]\(work:[^)]*\)", r"\1", result["answer"])
+        click.echo(re.sub(r"\s?\(work:[^)]*\)", "", text))
 
 
 if __name__ == "__main__":

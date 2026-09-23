@@ -178,6 +178,31 @@ def test_earlier_turns_reach_the_model_as_a_conversation(stub, monkeypatch):
     assert "work_id 167: Op. 31 No. 3 (The Hunt), movement 2, Scherzo" in sent[0].content
 
 
+def test_selected_bars_reach_the_model_as_the_passage_meant(stub, monkeypatch):
+    """ "these bars" means the selection in the viewer, so the model is told
+    which bars and which movement -- by the catalogue, not the client."""
+    monkeypatch.setattr(tools, "list_works", lambda: CATALOGUE)
+    model = stub([AIMessage(content="They stay in A-flat.")])
+    tools.answer("what key are these bars in?",
+                 selection={"work_id": 167, "measure_start": 17, "measure_end": 20})
+    system = model.seen[0][0].content
+    assert "selected mm. 17-20 of Op. 31 No. 3 (The Hunt), movement 2, Scherzo" in system
+    assert "(work_id 167)" in system
+
+
+@pytest.mark.parametrize("selection", [
+    None, "mm. 1-4", {"work_id": 167},
+    {"work_id": 167, "measure_start": 20, "measure_end": 17},     # backwards
+    {"work_id": 167, "measure_start": 0, "measure_end": 4},       # no bar 0
+    {"work_id": 167, "measure_start": "1", "measure_end": 4},     # not a number
+    {"work_id": True, "measure_start": 1, "measure_end": 4},
+    {"work_id": 999, "measure_start": 1, "measure_end": 4},       # not in the corpus
+])
+def test_a_selection_that_is_not_one_is_dropped(selection, monkeypatch):
+    monkeypatch.setattr(tools, "list_works", lambda: CATALOGUE)
+    assert tools.clean_selection(selection) is None
+
+
 def test_history_from_the_client_is_validated_and_bounded():
     turns = [{"question": f"q{i}", "answer": "a" * 10_000, "work_ids": [1, "2", True]}
              for i in range(20)]
@@ -207,6 +232,16 @@ def test_a_turn_reports_the_works_it_was_about():
         {"tool": "get_key_plan_tool", "args": {"work_id": 167}, "result": {}},
     ]
     assert tools.context_work_ids(trace) == [166, 167]
+
+
+def test_an_outlined_sonata_contributes_every_movement():
+    """An overview names every movement, and a reader may follow up on any of
+    them -- or click one -- not only the movement the outline was called with."""
+    trace = [
+        {"tool": "outline_sonata_tool", "args": {"work_id": 207},
+         "result": {"movements": [{"work_id": 207}, {"work_id": 221}]}},
+    ]
+    assert tools.context_work_ids(trace) == [207, 221]
 
 
 def test_the_answer_returns_this_turns_context_for_the_next(stub, monkeypatch):

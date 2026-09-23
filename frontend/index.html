@@ -259,6 +259,43 @@
       line-height: 1.4;
     }
 
+    /* A movement or bar range named in an answer, opening it in the score. */
+    .score-link {
+      color: var(--accent);
+      text-decoration: underline dotted;
+      text-underline-offset: 2px;
+      cursor: pointer;
+    }
+
+    .score-link:hover,
+    .score-link:focus-visible {
+      text-decoration-style: solid;
+      outline: none;
+    }
+
+    /* The tool calls an answer rests on, folded away until wanted. */
+    .tools-used {
+      margin-top: 0.75rem;
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    .tools-used > summary {
+      cursor: pointer;
+      user-select: none;
+      width: max-content;
+    }
+
+    .tools-used > summary:hover,
+    .tools-used > summary:focus-visible {
+      color: var(--accent);
+      outline: none;
+    }
+
+    .tools-used > .segment-cards-container {
+      margin-top: 0.5rem;
+    }
+
     .quote-card {
       text-decoration: none;
       color: inherit;
@@ -448,6 +485,47 @@
       width: 28px;
       height: 28px;
       animation: spin 0.8s linear infinite;
+    }
+
+    /* Dragging across bars selects them, like selecting text; the notation's
+       own text must not be selected instead. */
+    #score-viewer-container {
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    body.selecting,
+    body.selecting * {
+      cursor: col-resize !important;
+    }
+
+    .selection-chip {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 0.6rem;
+      padding: 0.3rem 0.4rem 0.3rem 0.75rem;
+      width: max-content;
+      max-width: 100%;
+      font-size: 0.75rem;
+      color: var(--accent);
+      background: rgba(20, 184, 166, 0.1);
+      border: 1px solid var(--accent);
+      border-radius: var(--radius-lg);
+    }
+
+    .selection-chip[hidden] {
+      display: none;
+    }
+
+    .selection-chip button {
+      background: none;
+      border: none;
+      color: inherit;
+      cursor: pointer;
+      font-size: 0.9rem;
+      line-height: 1;
+      padding: 0 0.2rem;
     }
 
     .highlighted-measure {
@@ -718,11 +796,12 @@
         <!-- Initial Greetings -->
         <div class="message assistant">
           <div class="message-bubble">
-            Hello! I am ScoreChat, your AI classical score expert. 
-            I have analyzed and indexed <strong>Beethoven's Piano Sonata No. 32 in C minor, Op. 111 (1st movement)</strong>.
+            Hello! I am ScoreChat. I answer questions about Beethoven's 32 piano sonatas &mdash; all 103 movements &mdash; from their scores, and show the analysis each answer rests on.
             <br/><br/>
-            You can ask me questions about its structure, tempo markings, specific harmonic progressions (e.g., in the opening <em>Maestoso</em>), keys, or texture tags.
-            When I retrieve segments of the score, they will show up below my responses as cards — click on them to view the actual sheet music slice in the viewer!
+            Ask about a whole sonata (<em>&ldquo;tell me about the Hunt&rdquo;</em>), a movement (<em>&ldquo;the Moonlight finale&rdquo;</em>) or particular bars (<em>&ldquo;describe mm. 1&ndash;8 of Op. 111/ii&rdquo;</em>).
+            Movements and bar numbers in my answers are links: click one to open it in the score.
+            <br/><br/>
+            You can also <strong>select bars yourself</strong>: drag across them in the score, then ask about <em>&ldquo;these bars&rdquo;</em>. Click anywhere else in the score to clear the selection.
           </div>
           <div class="message-meta">ScoreChat • Just now</div>
         </div>
@@ -737,9 +816,13 @@
           </select>
           <span id="provider-note"></span>
         </div>
+        <div id="selection-chip" class="selection-chip" hidden>
+          <span id="selection-chip-text"></span>
+          <button type="button" onclick="clearSelection()" title="Clear the selection" aria-label="Clear the selection">&times;</button>
+        </div>
         <form id="chat-form" onsubmit="handleQuerySubmit(event)">
           <div class="input-wrapper">
-            <input type="text" id="query-input" placeholder="Ask about Op. 111 (e.g., 'opening tempo' or 'harmony of mm. 1-4')..." autocomplete="off">
+            <input type="text" id="query-input" placeholder="Ask about a sonata, a movement, or the bars you have selected..." autocomplete="off">
             <button type="submit" id="send-btn">Send</button>
           </div>
         </form>
@@ -837,7 +920,10 @@
     let loadedWorkId = null;   // work_id currently loaded into vrvToolkit
     let currentPage = 1;
     let pageCount = 1;
-    let pendingHighlight = null; // {start, end} to apply after the next render
+    // The highlighted bars, {workId, start, end} in printed numbering: set by
+    // dragging across the score, by a bar link or card, or by "Measure ... Go",
+    // and sent with the next question as the passage "these bars" means.
+    let selection = null;
     // Zoom as the reader sees it: 100% is Verovio scale ZOOM_BASE, which reads
     // comfortably on a typical screen (Verovio's own 100% is poster-sized).
     const ZOOM_BASE = 40;
@@ -949,6 +1035,7 @@
       loadProviders();
       initLayout();
       initScoreSettings();
+      initBarSelection();
     });
 
     // Bars per line is remembered like the frame widths; zoom always opens at
@@ -1151,9 +1238,12 @@
       if (!query) return;
 
       inputEl.value = "";
-      
-      // Append user message
-      appendMessage("user", query);
+
+      // The selection goes with the question, and is named under it so the
+      // conversation shows what "these bars" meant when it was asked.
+      const asked = selection ? { ...selection } : null;
+      const askedAbout = asked ? selectionLabel() : "";
+      appendMessage("user", asked ? `${query}\n*about ${askedAbout}*` : query);
 
       // Append typing indicator
       const loaderId = appendLoadingMessage();
@@ -1167,6 +1257,8 @@
             question: query,
             provider: provider || null,
             history: conversation.slice(-MAX_SENT_TURNS),
+            selection: asked ? { work_id: asked.workId, measure_start: asked.start,
+                                 measure_end: asked.end } : null,
           }),
         });
         const data = await response.json().catch(() => ({}));
@@ -1175,7 +1267,7 @@
         // Remembered even when no answer came back: the next question may be
         // this one rephrased, and it reads better knowing what went before.
         conversation.push({
-          question: query,
+          question: asked ? `${query} (about ${askedAbout})` : query,
           answer: data.answer || null,
           work_ids: data.context_work_ids || [],
         });
@@ -1189,12 +1281,13 @@
         const text = data.answer
           ? (data.error ? `${data.answer}\n\n_${data.error}_` : data.answer)
           : (data.error || "No answer was returned.");
-        appendMessage("assistant", text, citations);
+        appendMessage("assistant", text, citations, traceReferences(data.trace));
 
         // Open the score at the first cited range, so the passage the answer
-        // talks about is on screen next to it.
+        // talks about is on screen next to it -- unless the question was about
+        // a selection, which is already on screen and should stay selected.
         const firstRange = citations.find(c => c.kind !== "quote" && c.work_id && c.measure_start !== null);
-        if (firstRange) {
+        if (firstRange && !asked) {
           loadWorkIntoViewer(firstRange.work_id, firstRange.label,
                              firstRange.measure_start, firstRange.measure_end);
         }
@@ -1204,6 +1297,124 @@
         appendMessage("assistant", "Sorry, I encountered an error processing your request: " + err.message);
       }
     }
+
+    // The movements an answer may link to: every work_id its tool calls named
+    // or returned, with the headings the calls reported for them. A link to any
+    // other id is shown as plain text -- the model can only point at music a
+    // tool actually gave it. `current` is the movement the calls were last
+    // about, which a bare "mm. 17-20" is read against.
+    function traceReferences(trace) {
+      const ids = new Set();
+      const headings = new Map();
+      let current = null;
+      const note = (id, heading) => {
+        const workId = parseInt(id, 10);
+        if (!Number.isFinite(workId)) return null;
+        ids.add(workId);
+        if (heading) headings.set(workId, heading);
+        return workId;
+      };
+      (trace || []).forEach(step => {
+        const args = step.args || {};
+        const result = step.result || {};
+        (((result.sonata || {}).movements) || []).forEach(m => note(m.work_id, m.heading));
+        (result.movements || []).forEach(m => note(m.work_id, m.heading));
+        if (result.resolved) current = note(result.resolved.work_id, result.resolved.heading) ?? current;
+        if (args.work_id !== undefined && args.work_id !== null) current = note(args.work_id) ?? current;
+      });
+      return { ids, headings, current };
+    }
+
+    const BAR_LIST = /\b(mm?\.)(\s*)(\d+(?:\s*[-\u2013]\s*\d+)?(?:(?:\s*,\s*|\s+and\s+|\s*&amp;\s*)\d+(?:\s*[-\u2013]\s*\d+)?)*)/g;
+    const BAR_RANGE = /(\d+)(?:\s*[-\u2013]\s*(\d+))?/g;
+    const STRAY_WORK_TARGET = /\s?\(work:\d+(?:\/\d+(?:\s*[-\u2013]\s*\d+)?)?\)/g;
+    const WORK_LINK = /\[([^\]\n]+)\]\(work:(\d+)(?:\/(\d+)(?:\s*[-\u2013]\s*(\d+))?)?\)/g;
+
+    function scoreLink(label, workId, start = null, end = null) {
+      const range = start !== null ? ` data-start="${start}" data-end="${end ?? start}"` : "";
+      const title = start !== null ? `Show ${start === (end ?? start) ? `m. ${start}` : `mm. ${start}\u2013${end}`} in the score`
+                                   : "Open this movement in the score";
+      return `<a class="score-link" href="#" data-work="${workId}"${range} title="${title}">${label}</a>`;
+    }
+
+    // Turn an answer's references to the score into links, over text that is
+    // already HTML-escaped. Three kinds, in order of trust: the model's own
+    // [text](work:ID/17-20) links; a movement heading a tool reported, found
+    // in the prose; and a bare "mm. 1-7, 10-16", read against the movement
+    // named most recently before it (or the one the calls were about).
+    function linkScoreReferences(html, refs) {
+      if (!refs) return html;
+      const found = [];
+      const free = (start, end) => !found.some(f => start < f.end && end > f.start);
+
+      for (const m of html.matchAll(WORK_LINK)) {
+        found.push({ start: m.index, end: m.index + m[0].length, kind: "link",
+                     label: m[1], work: parseInt(m[2], 10),
+                     from: m[3] ? parseInt(m[3], 10) : null, to: m[4] ? parseInt(m[4], 10) : null });
+      }
+      // Headings are matched word for word, whatever punctuation or case the
+      // model put between them ("ARIETTA Adagio molto, semplice ..." for
+      // "Arietta: Adagio molto semplice ..."). A one-word heading ("Allegro")
+      // would match ordinary prose, so only the model's own link covers those.
+      const byHeading = new Map();
+      refs.headings.forEach((heading, workId) => {
+        const key = heading.toLowerCase();
+        byHeading.set(key, byHeading.has(key) ? null : workId);  // shared heading: ambiguous
+      });
+      byHeading.forEach((workId, heading) => {
+        const words = heading.match(/[\p{L}\p{N}]+/gu) || [];
+        if (workId === null || words.length < 2) return;
+        const pattern = new RegExp(words.map(w => w.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+                                        .join("[^\\p{L}\\p{N}<>\\n]+"), "iu");
+        const m = pattern.exec(html);
+        if (m && free(m.index, m.index + m[0].length)) {
+          found.push({ start: m.index, end: m.index + m[0].length, kind: "heading", work: workId, label: m[0] });
+        }
+      });
+      for (const m of html.matchAll(BAR_LIST)) {
+        const start = m.index + m[1].length + m[2].length;
+        if (free(start, start + m[3].length)) {
+          found.push({ start, end: start + m[3].length, kind: "bars", text: m[3] });
+        }
+      }
+      found.sort((a, b) => a.start - b.start);
+
+      let out = "", at = 0, current = refs.current;
+      for (const f of found) {
+        out += html.slice(at, f.start);
+        at = f.end;
+        if (f.kind === "bars") {
+          out += current === null ? f.text
+            : f.text.replace(BAR_RANGE, (range, a, b) => scoreLink(range, current, +a, b ? +b : +a));
+        } else if (!refs.ids.has(f.work)) {
+          out += f.label;                      // an id no tool gave: text only
+        } else {
+          current = f.work;
+          out += f.kind === "link" && f.from !== null
+            ? scoreLink(f.label, f.work, f.from, f.to ?? f.from)
+            : scoreLink(f.label, f.work);
+        }
+      }
+      // A link target the model wrote without its [text] is noise to a reader.
+      return (out + html.slice(at)).replace(STRAY_WORK_TARGET, "");
+    }
+
+    // One listener for every link in the conversation. A movement link opens
+    // the movement at its first page unless it is already the one on screen;
+    // a bar link goes to the page with those bars and highlights them.
+    document.addEventListener("click", event => {
+      const link = event.target.closest(".score-link");
+      if (!link) return;
+      event.preventDefault();
+      const workId = parseInt(link.dataset.work, 10);
+      const work = works.find(w => w.id === workId);
+      const label = work ? workLabel(work) : link.textContent;
+      if (link.dataset.start !== undefined) {
+        loadWorkIntoViewer(workId, label, parseInt(link.dataset.start, 10), parseInt(link.dataset.end, 10));
+      } else if (loadedWorkId !== workId) {
+        loadWorkIntoViewer(workId, label, null, null);
+      }
+    });
 
     // Turn the tool-call trace into citation cards. A card names one call the
     // answer rests on; the ones that carry a bar range open it in the score.
@@ -1307,27 +1518,30 @@
     }
 
     // Append Chat Bubble
-    function appendMessage(role, text, citations = []) {
+    function appendMessage(role, text, citations = [], refs = null) {
       const messagesContainer = document.getElementById("chat-messages");
       
       const msgDiv = document.createElement("div");
       msgDiv.className = `message ${role}`;
       
-      let segmentsHtml = "";
+      // Tool calls fold away under one summary line; commentary quotes stay
+      // in view, since the answer attributes them and a reader should see who
+      // said what without opening anything.
+      let toolCards = "", quoteCards = "", toolCount = 0;
       if (citations && citations.length > 0) {
-        segmentsHtml = `<div class="segment-cards-container">`;
         citations.forEach(citation => {
           if (citation.kind === "quote") {
-            segmentsHtml += quoteCard(citation);
+            quoteCards += quoteCard(citation);
             return;
           }
+          toolCount += 1;
           const hasRange = citation.work_id && citation.measure_start !== null;
           const range = hasRange
             ? ` — mm. ${citation.measure_start}–${citation.measure_end}`
             : "";
           const serialized = encodeURIComponent(JSON.stringify(citation));
 
-          segmentsHtml += `
+          toolCards += `
             <div class="segment-card"${hasRange ? ` onclick="handleCardClick('${serialized}')"` : ` style="cursor:default"`}>
               <div class="segment-card-header">
                 <span>${citation.tool.replace(/_tool$/, "")}${range}</span>
@@ -1337,12 +1551,15 @@
             </div>
           `;
         });
-        segmentsHtml += `</div>`;
       }
+      const segmentsHtml =
+        (quoteCards ? `<div class="segment-cards-container">${quoteCards}</div>` : "") +
+        (toolCount ? `<details class="tools-used"><summary>Tools used (${toolCount})</summary>` +
+                     `<div class="segment-cards-container">${toolCards}</div></details>` : "");
 
       msgDiv.innerHTML = `
         <div class="message-bubble">
-          ${formatMarkdown(text)}
+          ${formatMarkdown(text, refs)}
           ${segmentsHtml}
         </div>
         <div class="message-meta">${role === 'user' ? 'You' : 'ScoreChat'} • Just now</div>
@@ -1449,11 +1666,9 @@
       document.getElementById("score-controls").style.display = "flex";
       document.getElementById("score-toolbar").style.display = "flex";
       document.getElementById("visualized-title").textContent = titleLabel || "";
-      document.getElementById("visualized-measures").textContent =
-        measureStart != null ? `Measures ${measureStart}–${measureEnd}` : "";
-
       activeWorkId = workId;
-      pendingHighlight = (measureStart != null) ? { start: measureStart, end: measureEnd } : null;
+      selection = (measureStart != null) ? { workId, start: measureStart, end: measureEnd } : null;
+      showSelection();
 
       container.innerHTML = `<div class="spinner" style="margin: auto;"></div>`;
 
@@ -1532,8 +1747,9 @@
 
       container.querySelectorAll(".score-page").forEach(el => pageObserver.observe(el));
 
-      if (pendingHighlight) {
-        highlightMeasures(pendingHighlight.start, pendingHighlight.end);
+      buildBarIndex();
+      if (selection && selection.workId === loadedWorkId) {
+        highlightMeasures(selection.start, selection.end);
       }
     }
 
@@ -1590,10 +1806,8 @@
         console.warn("getPageWithElement failed", e);
       }
 
-      pendingHighlight = { start: val, end: val };
-      document.getElementById("visualized-measures").textContent = `Measure ${val}`;
       goToPage(targetPage);
-      highlightMeasures(val, val);
+      setSelection(loadedWorkId, val, val);
     }
 
     // Zoom slider. The page is fitted to the pane, so zooming re-flows the
@@ -1621,6 +1835,147 @@
       }
       renderAllPages();
       goToPage(page, /*smooth=*/ false);
+    }
+
+    // --- Selecting bars ------------------------------------------------------
+    // Like selecting text: a drag across the score selects every bar from the
+    // one it started on to the one under the pointer, across lines and pages;
+    // a click that does not drag clears it. Bars are found by position rather
+    // than by what was clicked, since most of a bar is empty paper.
+
+    const ROMAN_NUMERALS = ["", "i", "ii", "iii", "iv", "v"];
+    let barIndex = [];   // every measure on screen in reading order: {el, page, bar}
+    let drag = null;
+
+    function barsLabel(start, end) {
+      return start === end ? `m. ${start}` : `mm. ${start}\u2013${end}`;
+    }
+
+    function selectionLabel() {
+      if (!selection) return "";
+      const work = works.find(w => w.id === selection.workId);
+      const name = work ? `${work.opus || work.title}/${ROMAN_NUMERALS[work.movement_number] || work.movement_number}` : "";
+      return `${name}, ${barsLabel(selection.start, selection.end)}`;
+    }
+
+    // Everything that shows the selection: the highlight is drawn by the
+    // caller, this keeps the header and the chip above the question in step.
+    function showSelection() {
+      document.getElementById("visualized-measures").textContent =
+        selection ? barsLabel(selection.start, selection.end) : "";
+      const chip = document.getElementById("selection-chip");
+      chip.hidden = !selection;
+      document.getElementById("selection-chip-text").textContent =
+        selection ? `Asking about ${selectionLabel()}` : "";
+    }
+
+    function setSelection(workId, start, end) {
+      selection = { workId, start, end };
+      highlightMeasures(start, end);
+      showSelection();
+    }
+
+    function clearSelection() {
+      selection = null;
+      clearHighlights();
+      showSelection();
+    }
+
+    // Printed bar per measure element. A pickup has no number of its own; a
+    // drag that covers one still selects the bars around it.
+    function buildBarIndex() {
+      const barOf = new Map(Object.entries(measureIdCache[loadedWorkId] || {})
+        .map(([bar, id]) => [id, parseInt(bar, 10)]));
+      barIndex = [...document.querySelectorAll("#score-viewer-container g.measure")]
+        .map(el => ({ el, page: el.closest(".score-page"), bar: barOf.get(el.id) ?? null }));
+    }
+
+    // A bar's area on screen: the span of its staff lines, widened a little
+    // above and below so the space around the staves still counts. Slurs and
+    // ledger-line notes overhang a bar's own width, so its drawing is not used.
+    function barBox(el) {
+      const lines = el.querySelectorAll(":scope > g.staff > path");
+      if (!lines.length) return el.getBoundingClientRect();
+      let left = Infinity, right = -Infinity, top = Infinity, bottom = -Infinity;
+      lines.forEach(line => {
+        const r = line.getBoundingClientRect();
+        left = Math.min(left, r.left); right = Math.max(right, r.right);
+        top = Math.min(top, r.top); bottom = Math.max(bottom, r.bottom);
+      });
+      const pad = (bottom - top) * 0.35;
+      return { left, right, top: top - pad, bottom: bottom + pad };
+    }
+
+    function measureAt(x, y) {
+      const hit = document.elementFromPoint(x, y);
+      const page = hit && hit.closest(".score-page");
+      if (!page) return null;
+      for (let i = 0; i < barIndex.length; i++) {
+        if (barIndex[i].page !== page) continue;
+        const box = barBox(barIndex[i].el);
+        if (x >= box.left && x <= box.right && y >= box.top && y <= box.bottom) return i;
+      }
+      return null;
+    }
+
+    function barsBetween(i, j) {
+      const bars = barIndex.slice(Math.min(i, j), Math.max(i, j) + 1)
+        .map(entry => entry.bar).filter(bar => bar !== null);
+      return bars.length ? { start: Math.min(...bars), end: Math.max(...bars) } : null;
+    }
+
+    function initBarSelection() {
+      const container = document.getElementById("score-viewer-container");
+
+      container.addEventListener("pointerdown", event => {
+        if (event.button !== 0 || loadedWorkId == null || !event.target.closest(".score-page")) return;
+        drag = { x: event.clientX, y: event.clientY, from: measureAt(event.clientX, event.clientY),
+                 moved: false, range: null, touch: event.pointerType === "touch" };
+      });
+
+      container.addEventListener("pointermove", event => {
+        // On a touchscreen a drag scrolls the score; only a tap is ours.
+        if (!drag || drag.touch) return;
+        if (!drag.moved) {
+          if (Math.hypot(event.clientX - drag.x, event.clientY - drag.y) < 5) return;
+          drag.moved = true;
+          container.setPointerCapture(event.pointerId);
+          document.body.classList.add("selecting");
+        }
+        // Near the top or bottom edge, scroll so the drag can reach further.
+        const box = container.getBoundingClientRect();
+        const edge = event.clientY > box.bottom - 40 ? 1 : event.clientY < box.top + 40 ? -1 : 0;
+        if (edge) container.scrollBy({ top: 24 * edge, behavior: "instant" });
+
+        const at = measureAt(event.clientX, event.clientY);
+        if (at === null) return;          // between systems: keep what we have
+        if (drag.from === null) drag.from = at;
+        const range = barsBetween(drag.from, at);
+        if (range && (!drag.range || range.start !== drag.range.start || range.end !== drag.range.end)) {
+          drag.range = range;
+          highlightMeasures(range.start, range.end);
+        }
+      });
+
+      const finish = event => {
+        if (!drag) return;
+        if (container.hasPointerCapture(event.pointerId)) container.releasePointerCapture(event.pointerId);
+        document.body.classList.remove("selecting");
+        if (!drag.moved) {
+          clearSelection();                // a click, not a drag
+        } else if (drag.range) {
+          setSelection(loadedWorkId, drag.range.start, drag.range.end);
+        } else if (selection) {
+          highlightMeasures(selection.start, selection.end);
+        }
+        drag = null;
+      };
+      container.addEventListener("pointerup", finish);
+      container.addEventListener("pointercancel", event => {
+        if (drag && drag.moved && selection) highlightMeasures(selection.start, selection.end);
+        document.body.classList.remove("selecting");
+        drag = null;
+      });
     }
 
     // Remove any highlight overlays left over from a previous jump — needed
@@ -1654,10 +2009,11 @@
       }
     }
 
-    // Extremely basic markdown formatter helper
-    function formatMarkdown(text) {
+    // A small markdown subset. The text is escaped first: answers can quote
+    // OCR'd commentary, and none of it should reach the page as markup.
+    function formatMarkdown(text, refs = null) {
       if (!text) return "";
-      return text
+      return linkScoreReferences(escapeHtml(text), refs)
         .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
         .replace(/\*(.*?)\*/g, '<em>$1</em>')
         .replace(/`(.*?)`/g, '<code style="font-family:\'Fira Code\',monospace; background:rgba(0,0,0,0.2); padding:0.1rem 0.3rem; border-radius:4px; font-size:0.85rem;">$1</code>')
