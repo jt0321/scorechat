@@ -2,6 +2,9 @@
 
 Ask questions about Beethoven's piano sonatas and get answers traceable to the score.
 
+**Demo: [scorechat.fly.dev](https://scorechat.fly.dev)** — the viewer and chat, on free-tier
+models (Gemini, OpenRouter), rate-limited per visitor. It may take a few seconds to wake.
+
 The corpus is 32 sonatas — 103 movements — in Humdrum `**kern`, from
 [craigsapp/beethoven-piano-sonatas](https://github.com/craigsapp/beethoven-piano-sonatas).
 The score is the source of musical truth: the model chooses which stored facts to
@@ -106,6 +109,19 @@ python server.py                     # viewer + API at localhost:8000
 
 An existing database needs the migrations in `db/migrations/` applied in order;
 `CLAUDE.md` lists them.
+
+## CI/CD
+
+`.github/workflows/fly-deploy.yml` runs on every push and pull request to `main`.
+The test job runs `pytest` against an empty pgvector database with the schema
+applied, with the `.krn` submodule checked out, so corpus-backed tests skip and
+everything else runs. On a push to `main`, a passing suite then deploys to Fly.io
+(`flyctl deploy --remote-only --ha=false`, one machine); pull requests are tested
+but never deployed.
+
+The deployed image only serves: it carries no corpus and runs no ingestion.
+Everything it answers from lives in the hosted Postgres, which is populated
+from a local database dump rather than by the pipeline.
 
 ## Model providers
 
