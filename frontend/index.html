@@ -367,11 +367,12 @@
     #score-viewer-container {
       flex: 1;
       overflow-y: auto;
-      overflow-x: hidden;
+      overflow-x: auto;         /* the layout fits the pane, but never clip a line */
+      scrollbar-gutter: stable; /* a scrollbar appearing must not narrow the fitted width */
       padding: 2rem;
       display: flex;
       flex-direction: column;
-      align-items: center;
+      align-items: safe center; /* an overflowing page stays reachable on the left */
       scroll-behavior: smooth;
     }
 
@@ -393,10 +394,15 @@
       background-color: #ffffff;
       border-radius: var(--radius-md);
       box-shadow: 0 10px 30px rgba(0,0,0,0.5);
-      min-width: 600px;
-      max-width: 1000px;
-      width: 100%;
+      /* As wide as the engraved page: the layout is sized to the pane, and
+         a fixed max-width here used to cut the ends of the lines off. */
+      width: max-content;
+      flex-shrink: 0;
       margin-bottom: 2rem;
+    }
+
+    .score-page > svg {
+      display: block;
     }
 
     .score-page:last-child {
@@ -530,6 +536,16 @@
       color: var(--text);
       border-radius: var(--radius-sm);
       padding: 0.25rem 0.5rem;
+      font-size: 0.8rem;
+      font-family: inherit;
+    }
+
+    .score-toolbar select {
+      background: rgba(0, 0, 0, 0.2);
+      border: 1px solid var(--border);
+      color: var(--text);
+      border-radius: var(--radius-sm);
+      padding: 0.25rem 0.4rem;
       font-size: 0.8rem;
       font-family: inherit;
     }
@@ -766,8 +782,21 @@
 
         <div class="toolbar-group" style="flex:1; min-width: 10rem;">
           <label for="zoom-slider">Zoom</label>
-          <input type="range" id="zoom-slider" min="20" max="150" step="2" value="42" style="flex:1" oninput="onZoomChange(this.value)">
-          <span id="zoom-value" style="min-width:2.5rem; text-align:right;">42%</span>
+          <input type="range" id="zoom-slider" min="50" max="300" step="5" value="100" style="flex:1" oninput="onZoomChange(this.value)">
+          <span id="zoom-value" style="min-width:2.5rem; text-align:right;">100%</span>
+        </div>
+
+        <div class="toolbar-group">
+          <label for="measures-per-line">Bars per line</label>
+          <select id="measures-per-line" onchange="onMeasuresPerLineChange(this.value)">
+            <option value="0">Fit</option>
+            <option value="2">2</option>
+            <option value="3">3</option>
+            <option value="4">4</option>
+            <option value="5">5</option>
+            <option value="6">6</option>
+            <option value="8">8</option>
+          </select>
         </div>
       </div>
 
@@ -809,10 +838,18 @@
     let currentPage = 1;
     let pageCount = 1;
     let pendingHighlight = null; // {start, end} to apply after the next render
-    let currentScale = 42; // percent; purely a rendering zoom — verified this does NOT
-                            // affect Verovio's pagination/layout, only the output SVG size
+    // Zoom as the reader sees it: 100% is Verovio scale ZOOM_BASE, which reads
+    // comfortably on a typical screen (Verovio's own 100% is poster-sized).
+    const ZOOM_BASE = 40;
+    let currentZoom = 100;
+    const verovioScale = () => Math.round(currentZoom * ZOOM_BASE / 100);
+    // Bars per system: 0 lets Verovio fill each line to the page width, N
+    // breaks after every N-th bar. Either way the page is as wide as the pane.
+    let measuresPerLine = 0;
+    let loadedMeasuresPerLine = null; // the breaks the loaded MEI was prepared with
+    let layoutWidth = 0;              // pane width the current layout was fitted to
+    let relayoutTimer = null;
     let pageObserver = null;   // IntersectionObserver tracking which page is in view while scrolling
-    let zoomDebounceTimer = null;
     let suppressPageObserver = false; // true briefly during a programmatic scroll (goToPage/measure jump)
                                        // so it doesn't fight the target page for the "current page" indicator
 
@@ -821,9 +858,65 @@
     // pagination (systems-per-page is an editorial choice, not present in
     // the source Humdrum/MEI data), so this is a fixed reasonable default
     // rather than an attempt to match any particular printed edition.
-    const PAGE_WIDTH = 2800;
+    // The page *width* is not fixed: it is fitted to the pane (fittedPageWidth),
+    // so a line never runs past the edge. The height stays about one screen.
     const PAGE_HEIGHT = 2794;
     const PAGE_MARGIN = 50;
+    const MIN_PAGE_WIDTH = 800;
+
+    // Verovio lays out in its own units and multiplies by `scale` on output,
+    // so an SVG as wide as the pane needs a page of paneWidth / scale units.
+    function fittedPageWidth() {
+      const container = document.getElementById("score-viewer-container");
+      const style = getComputedStyle(container);
+      const inner = container.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+      layoutWidth = container.clientWidth;
+      return Math.max(MIN_PAGE_WIDTH, Math.floor(inner * 100 / verovioScale()));
+    }
+
+    // Replace the encoding's own system/page breaks (Durand's, from the
+    // Humdrum) with one after every n-th bar. Pickups carry no @n and are not
+    // counted, so an anacrusis rides along with the first bar's line.
+    function withMeasuresPerLine(meiXml, n) {
+      const doc = new DOMParser().parseFromString(meiXml, "application/xml");
+      doc.querySelectorAll("sb, pb").forEach(el => el.remove());
+      const bars = [...doc.querySelectorAll("measure")].filter(el => el.hasAttribute("n"));
+      bars.forEach((bar, i) => {
+        if ((i + 1) % n === 0 && i < bars.length - 1) {
+          bar.after(doc.createElementNS(bar.namespaceURI, "sb"));
+        }
+      });
+      return new XMLSerializer().serializeToString(doc);
+    }
+
+    // The first bar on the page in view, so a relayout — which moves bars
+    // between pages — can bring the reader back to the same music.
+    function anchorMeasureId() {
+      const page = document.getElementById(`score-page-${currentPage}`);
+      const measure = page && page.querySelector("g.measure");
+      return measure ? measure.id : null;
+    }
+
+    // Re-flow the loaded score for the current zoom and pane width, keeping
+    // the reader's place.
+    function relayout() {
+      if (!vrvToolkit || loadedWorkId == null) return;
+      const anchor = anchorMeasureId();
+      vrvToolkit.setOptions({ scale: verovioScale(), pageWidth: fittedPageWidth() });
+      vrvToolkit.redoLayout();
+      pageCount = vrvToolkit.getPageCount();
+      let page = 1;
+      if (anchor) {
+        try { page = vrvToolkit.getPageWithElement(anchor) || 1; } catch (e) { /* page 1 */ }
+      }
+      renderAllPages();
+      goToPage(page, /*smooth=*/ false);
+    }
+
+    function scheduleRelayout(delay = 150) {
+      clearTimeout(relayoutTimer);
+      relayoutTimer = setTimeout(relayout, delay);
+    }
 
     // Parse an MEI document's <measure n="..." xml:id="..."> elements into
     // a {measureNumber: xmlId} map.
@@ -855,7 +948,29 @@
       loadWorksList();
       loadProviders();
       initLayout();
+      initScoreSettings();
     });
+
+    // Zoom and bars-per-line are remembered like the frame widths. Dragging a
+    // divider or resizing the window changes the pane, so the score re-flows.
+    function initScoreSettings() {
+      const zoom = parseInt(readLayout("scoreZoom"), 10);
+      if (Number.isFinite(zoom)) {
+        document.getElementById("zoom-slider").value = zoom;
+        currentZoom = parseInt(document.getElementById("zoom-slider").value, 10);
+        document.getElementById("zoom-value").textContent = `${currentZoom}%`;
+      }
+      const perLine = readLayout("measuresPerLine");
+      const select = document.getElementById("measures-per-line");
+      if (perLine && [...select.options].some(o => o.value === perLine)) {
+        select.value = perLine;
+        measuresPerLine = parseInt(perLine, 10);
+      }
+      const container = document.getElementById("score-viewer-container");
+      new ResizeObserver(() => {
+        if (loadedWorkId != null && Math.abs(container.clientWidth - layoutWidth) > 8) scheduleRelayout(200);
+      }).observe(container);
+    }
 
     // --- Layout: resizable frames and the collapsible works list -----------
     // Sizes are a per-browser convenience, so storage failing (a private
@@ -939,11 +1054,17 @@
         container: document.body,
         unit: "px", min: 180, max: 520, fallback: 280, key: "sidebarWidth",
       });
+      // By default the score takes 60% of the window as first opened; the
+      // chat's share of what is left is kept as a percentage from then on.
+      const mainWidth = document.querySelector("main").getBoundingClientRect().width;
+      const chatShare = 100 * (mainWidth - 0.6 * window.innerWidth) / mainWidth;
       makeResizer({
         handle: document.getElementById("pane-resizer"),
         target: document.getElementById("chat-pane"),
         container: document.querySelector("main"),
-        unit: "%", min: 20, max: 80, fallback: 45, key: "chatWidth",
+        unit: "%", min: 20, max: 80,
+        fallback: Math.min(80, Math.max(20, Math.round(chatShare))),
+        key: "chatShare",
       });
     }
 
@@ -1287,6 +1408,31 @@
                          citation.measure_start, citation.measure_end);
     }
 
+    // Hand a cached work's MEI to Verovio, laid out for the current pane,
+    // zoom and bars per line. Returns false if Verovio cannot parse it.
+    function loadScoreData(workId) {
+      vrvToolkit.setOptions({
+        pageWidth: fittedPageWidth(),
+        pageHeight: PAGE_HEIGHT,
+        pageMarginTop: PAGE_MARGIN,
+        pageMarginBottom: PAGE_MARGIN,
+        pageMarginLeft: PAGE_MARGIN,
+        pageMarginRight: PAGE_MARGIN,
+        scale: verovioScale(),
+        adjustPageHeight: false,
+        // "line" keeps the system breaks we insert and paginates itself.
+        breaks: measuresPerLine ? "line" : "auto",
+      });
+      const meiXml = meiCache[workId];
+      const ok = vrvToolkit.loadData(
+        measuresPerLine ? withMeasuresPerLine(meiXml, measuresPerLine) : meiXml);
+      if (!ok) return false;
+      loadedWorkId = workId;
+      loadedMeasuresPerLine = measuresPerLine;
+      pageCount = vrvToolkit.getPageCount();
+      return true;
+    }
+
     // Load a work's full score into Verovio (fetching + caching its MEI as
     // needed), jump to the page containing [measureStart, measureEnd] if
     // given, and highlight that range. Supports prev/next page navigation
@@ -1319,32 +1465,16 @@
           meiCache[workId] = await res.text();
           measureIdCache[workId] = buildMeasureIdMap(meiCache[workId]);
         }
-        const meiXml = meiCache[workId];
 
-        // Only reload into the WASM toolkit if switching works — cheap
-        // page navigation within the same work reuses the loaded score.
-        // Pagination (pageWidth/pageHeight/margins) is fixed; scale is
-        // rendering-only and doesn't affect page breaks, so zoom changes
-        // never need to reload/relayout the score.
-        if (loadedWorkId !== workId) {
-          vrvToolkit.setOptions({
-            pageWidth: PAGE_WIDTH,
-            pageHeight: PAGE_HEIGHT,
-            pageMarginTop: PAGE_MARGIN,
-            pageMarginBottom: PAGE_MARGIN,
-            pageMarginLeft: PAGE_MARGIN,
-            pageMarginRight: PAGE_MARGIN,
-            scale: currentScale,
-            adjustPageHeight: false,
-            breaks: "auto",
-          });
-          const ok = vrvToolkit.loadData(meiXml);
-          if (!ok) {
+        // Only reload into the WASM toolkit if switching works or bars per
+        // line (which rewrites the MEI's breaks) — page navigation within the
+        // same work reuses the loaded score. Zoom and pane width re-flow it
+        // through relayout() instead, without reloading.
+        if (loadedWorkId !== workId || loadedMeasuresPerLine !== measuresPerLine) {
+          if (!loadScoreData(workId)) {
             container.innerHTML = `<div class="empty-state"><p style="color:#ef4444;">Verovio failed to parse the MEI for this work.</p></div>`;
             return;
           }
-          loadedWorkId = workId;
-          pageCount = vrvToolkit.getPageCount();
         }
 
         let targetPage = 1;
@@ -1467,22 +1597,32 @@
       highlightMeasures(val, val);
     }
 
-    // Zoom slider: purely a rendering-size change, doesn't touch pagination
-    // (verified: Verovio's `scale` option only affects output SVG
-    // dimensions, not layout/line-breaking). Re-rendering now redraws every
-    // stacked page, so debounce while the slider is actively dragged.
+    // Zoom slider. The page is fitted to the pane, so zooming re-flows the
+    // score: in "Fit" mode it changes how many bars a line holds, with a fixed
+    // count it changes how tightly they are spaced. Debounced while dragging,
+    // since every stacked page is redrawn.
     function onZoomChange(value) {
-      currentScale = parseInt(value, 10);
-      document.getElementById("zoom-value").textContent = `${currentScale}%`;
-      if (!vrvToolkit || loadedWorkId == null) return;
+      currentZoom = parseInt(value, 10);
+      document.getElementById("zoom-value").textContent = `${currentZoom}%`;
+      writeLayout("scoreZoom", currentZoom);
+      scheduleRelayout();
+    }
 
-      clearTimeout(zoomDebounceTimer);
-      zoomDebounceTimer = setTimeout(() => {
-        vrvToolkit.setOptions({ scale: currentScale });
-        const pageToRestore = currentPage;
-        renderAllPages();
-        goToPage(pageToRestore, /*smooth=*/ false);
-      }, 150);
+    // Bars per line rewrites the breaks in the MEI, so the score is reloaded
+    // (from the cache) and brought back to the bar the reader was looking at.
+    // Measure xml:ids come from the encoding, so they survive the reload.
+    function onMeasuresPerLineChange(value) {
+      measuresPerLine = parseInt(value, 10) || 0;
+      writeLayout("measuresPerLine", measuresPerLine);
+      if (!vrvToolkit || loadedWorkId == null) return;
+      const anchor = anchorMeasureId();
+      if (!loadScoreData(loadedWorkId)) return;
+      let page = 1;
+      if (anchor) {
+        try { page = vrvToolkit.getPageWithElement(anchor) || 1; } catch (e) { /* page 1 */ }
+      }
+      renderAllPages();
+      goToPage(page, /*smooth=*/ false);
     }
 
     // Remove any highlight overlays left over from a previous jump — needed
