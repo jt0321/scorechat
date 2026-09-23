@@ -951,15 +951,10 @@
       initScoreSettings();
     });
 
-    // Zoom and bars-per-line are remembered like the frame widths. Dragging a
-    // divider or resizing the window changes the pane, so the score re-flows.
+    // Bars per line is remembered like the frame widths; zoom always opens at
+    // 100%. Dragging a divider or resizing the window changes the pane, so the
+    // score re-flows.
     function initScoreSettings() {
-      const zoom = parseInt(readLayout("scoreZoom"), 10);
-      if (Number.isFinite(zoom)) {
-        document.getElementById("zoom-slider").value = zoom;
-        currentZoom = parseInt(document.getElementById("zoom-slider").value, 10);
-        document.getElementById("zoom-value").textContent = `${currentZoom}%`;
-      }
       const perLine = readLayout("measuresPerLine");
       const select = document.getElementById("measures-per-line");
       if (perLine && [...select.options].some(o => o.value === perLine)) {
@@ -1054,17 +1049,17 @@
         container: document.body,
         unit: "px", min: 180, max: 520, fallback: 280, key: "sidebarWidth",
       });
-      // By default the score takes 60% of the window as first opened; the
+      // By default the score takes 50% of the window as first opened; the
       // chat's share of what is left is kept as a percentage from then on.
       const mainWidth = document.querySelector("main").getBoundingClientRect().width;
-      const chatShare = 100 * (mainWidth - 0.6 * window.innerWidth) / mainWidth;
+      const chatShare = 100 * (mainWidth - 0.5 * window.innerWidth) / mainWidth;
       makeResizer({
         handle: document.getElementById("pane-resizer"),
         target: document.getElementById("chat-pane"),
         container: document.querySelector("main"),
         unit: "%", min: 20, max: 80,
         fallback: Math.min(80, Math.max(20, Math.round(chatShare))),
-        key: "chatShare",
+        key: "chatShare50",
       });
     }
 
@@ -1608,7 +1603,6 @@
     function onZoomChange(value) {
       currentZoom = parseInt(value, 10);
       document.getElementById("zoom-value").textContent = `${currentZoom}%`;
-      writeLayout("scoreZoom", currentZoom);
       scheduleRelayout();
     }
 
