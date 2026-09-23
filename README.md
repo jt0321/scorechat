@@ -40,7 +40,7 @@ flowchart TB
 
   subgraph answering ["answering"]
     API["<b>pipeline/analysis_api.py</b><br/>six functions over stored analysis<br/>+ two over commentary"]
-    TOOLS["<b>pipeline/tools.py</b><br/>the eight bound as LLM tools — the trace is the citation<br/><i>ask.py · GET /api/ask · web client</i>"]
+    TOOLS["<b>pipeline/tools.py</b><br/>the nine bound as LLM tools — the trace is the citation<br/><i>ask.py · GET /api/ask · web client</i>"]
     MEI["<b>MEI via Verovio</b><br/>exact notation for a cited bar range"]
   end
 

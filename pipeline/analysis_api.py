@@ -33,7 +33,7 @@ import re
 import unicodedata
 from typing import Any
 
-from analysis.humdrum import reference_edition
+from analysis.humdrum import meter_changes, reference_edition
 from analysis.span_relations import (
     WorkFeatures, check_repeats, check_varies, transposition_interval,
 )
@@ -223,9 +223,10 @@ def resolve_work(query: str, limit: int = 5) -> dict:
         name = f" ({sonata['nickname']})" if sonata["nickname"] else ""
         result["note"] = (
             f"The request names the sonata {sonata['opus']}{name}, which has "
-            f"{sonata['movement_count']} movements (listed in `sonata`). Answer "
-            "about the sonata from that, or ask which movement is meant before "
-            "calling a tool that needs a work_id.")
+            f"{sonata['movement_count']} movements (listed in `sonata`). For a "
+            "question about the sonata as a whole, call outline_sonata_tool with "
+            "any movement's work_id; ask which movement is meant only when the "
+            "question needs one.")
     elif result["resolved"] is None and len(opera) > 1:
         # "Op. 31" is a set of three sonatas published together, not one work.
         base = {re.sub(r"\s+No\.\s*\d+$", "", o) for o in opera if o}
@@ -570,6 +571,77 @@ def locate_in_form(work_id: int, measure: int) -> dict:
                       "play_count": s["evidence"].get("play_count")}
                      for s in sections],
         "note": None if containing else f"No notated section contains m. {measure}.",
+    }
+
+
+# --- the sonata as a whole --------------------------------------------------
+
+# A synopsis names the keys a movement passes through, not every region the
+# estimator found: the Hunt's finale has fifteen, and a list that long is an
+# analysis rather than an overview.
+MAX_OUTLINE_KEY_REGIONS = 8
+
+
+def _meter_sequence(work_id: int) -> list[str]:
+    """The meters a movement is written in, in order, from the source's own
+    `*M` records (music21 loses changes in three movements)."""
+    changes = meter_changes(get_source_text(work_id) or "")
+    sequence: list[str] = []
+    for bar in sorted(changes):
+        if not sequence or sequence[-1] != changes[bar]:
+            sequence.append(changes[bar])
+    return sequence
+
+
+def _outline_movement(movement: dict) -> dict:
+    work_id = movement["work_id"]
+    measures = _bars(work_id)
+    regions = _runs([(m["measure_belongs_to"], m["local_key"])
+                     for m in measures if m["local_key"] and m["measure_belongs_to"]])
+    sections = [s for s in get_notated_sections(work_id)
+                if not s["evidence"].get("is_alternate_ending")]
+    # A section overlapped by its successor is only the pickup into it (the Hunt
+    # finale's "I", bar 1 of an A that also starts at bar 1), not a part of the form.
+    sections = [s for s, after in zip(sections, sections[1:] + [None])
+                if after is None or after["measure_start"] > s["measure_end"]]
+    return {
+        **movement,
+        "bars": sum(1 for m in measures if m["measure_role"] == "bar"),
+        "meters": _meter_sequence(work_id),
+        # Engraved: which stretches the score marks to be played twice.
+        "sections": [{"label": s["label"],
+                      "measures": f"{s['measure_start']}-{s['measure_end']}",
+                      "repeated": (s["evidence"].get("play_count") or 1) > 1}
+                     for s in sections] or None,
+        # Estimated, and smoothed: a key the harmony only touches is not here.
+        "estimated_keys": [{"key": _readable_key(r["value"]),
+                            "measures": f"{r['measure_start']}-{r['measure_end']}"}
+                           for r in regions[:MAX_OUTLINE_KEY_REGIONS]],
+        "estimated_key_regions": len(regions),
+    }
+
+
+def outline_sonata(work_id: int) -> dict:
+    """Every movement of the sonata `work_id` belongs to, in order, with what a
+    synopsis can rest on: heading, engraved key, length, meter, the repeats the
+    score marks, and the keys the movement is estimated to pass through.
+
+    For a question about a sonata as a whole. It is an overview by design --
+    nothing here is bar-by-bar -- so an answer built on it stays one.
+    """
+    work = next((w for w in list_works() if w["id"] == work_id), None)
+    if work is None:
+        return {"error": f"No work with id {work_id}."}
+    sonata = _sonata_summary(work.get("opus") or "")
+    if sonata is None:
+        return {"error": f"Work {work_id} is not a movement of a catalogued sonata."}
+    return {
+        **{k: v for k, v in sonata.items() if k != "movements"},
+        "movements": [_outline_movement(m) for m in sonata["movements"]],
+        "note": ("`sections` are engraved; a movement with none notates no repeats. "
+                 "`estimated_keys` are smoothed estimates, capped at "
+                 f"{MAX_OUTLINE_KEY_REGIONS} regions (`estimated_key_regions` gives the "
+                 "full count); a single region means modulations are unconfirmed, not absent."),
     }
 
 

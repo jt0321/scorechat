@@ -1296,6 +1296,10 @@
             .forEach(c => parts.push(`${c.author.split(" ").slice(-1)[0]} p. ${c.page ?? "–"}: ${c.value} ${mark[c.check]}`));
           break;
         }
+        case "outline_sonata_tool":
+          (result.movements || []).forEach(m => parts.push(
+            `${m.movement_number}. ${m.heading || "–"}, ${m.key}, ${m.bars} bars`));
+          break;
         case "locate_in_form_tool":
           if (result.section) {
             parts.push(`section ${result.section.label}, mm. ${result.section.measure_start}\u2013${result.section.measure_end}`);

@@ -13,7 +13,7 @@ import pytest
 
 from pipeline.analysis_api import (
     compare_spans, describe_span, find_recurrences, get_key_plan,
-    locate_in_form, resolve_work,
+    locate_in_form, outline_sonata, resolve_work,
 )
 
 
@@ -75,6 +75,28 @@ def test_a_sonata_lists_its_movements_with_headings_and_engraved_keys():
     assert [(m["movement_number"], m["key"]) for m in sonata["movements"]] == [
         (1, "E-flat major"), (2, "A-flat major"), (3, "E-flat major"), (4, "E-flat major")]
     assert sonata["movements"][1]["heading"].startswith("Scherzo")
+
+
+def test_a_sonata_is_outlined_movement_by_movement_in_one_call():
+    """A question about the whole sonata wants every movement, in order, with
+    what a short synopsis rests on -- and no more than that."""
+    sonata = resolve_work("op31/no3")["sonata"]
+    if sonata is None:
+        pytest.skip("corpus not ingested")
+    outline = outline_sonata(sonata["movements"][2]["work_id"])  # any movement will do
+    movements = outline["movements"]
+    assert [m["movement_number"] for m in movements] == [1, 2, 3, 4]
+    finale = movements[3]
+    assert finale["meters"] == ["6/8"] and finale["bars"] > 300
+    # The pickup marked "I" is not reported as a section of its own.
+    assert [(s["label"], s["repeated"]) for s in finale["sections"]] == [("A", True), ("B", False)]
+    # Capped: the finale has more estimated regions than an overview lists.
+    assert len(finale["estimated_keys"]) <= finale["estimated_key_regions"]
+    assert finale["estimated_keys"][0]["key"] == "E-flat major"
+
+
+def test_outlining_an_unknown_work_is_an_error_not_an_empty_sonata():
+    assert "error" in outline_sonata(-1)
 
 
 @pytest.mark.parametrize("query,opus,expected_movement", [

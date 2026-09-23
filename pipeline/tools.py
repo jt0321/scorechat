@@ -146,6 +146,20 @@ def locate_in_form_tool(work_id: int, measure: int) -> str:
 
 
 @tool
+def outline_sonata_tool(work_id: int) -> str:
+    """Outline the whole sonata a movement belongs to, for a question about
+    the sonata rather than one movement ("tell me about the Hunt", "what is
+    Op. 110 like?"). Pass the work_id of any of its movements.
+
+    Returns every movement in order with its heading, engraved key, length in
+    bars, meter(s), the sections the score marks and whether each repeats, and
+    the keys it is estimated to pass through. One call covers every movement,
+    so there is no need to call the other tools movement by movement.
+    """
+    return json.dumps(analysis_api.outline_sonata(work_id))
+
+
+@tool
 def search_commentary_tool(query: str, work_id: int | None = None, whole_sonata: bool = False) -> str:
     """Search what published commentators wrote about the sonatas: Elterlein
     (1879, all 32 sonatas), Marx (1895, twenty of them), Shedlock (1895, a
@@ -181,7 +195,7 @@ def commentary_claims_tool(work_id: int) -> str:
 TOOLS = [
     resolve_work_tool, describe_span_tool, find_recurrences_tool,
     compare_spans_tool, get_key_plan_tool, locate_in_form_tool,
-    search_commentary_tool, commentary_claims_tool,
+    outline_sonata_tool, search_commentary_tool, commentary_claims_tool,
 ]
 TOOLS_BY_NAME = {t.name: t for t in TOOLS}
 
@@ -197,9 +211,31 @@ The *work* is the whole sonata: Op. 31 No. 3 ("The Hunt") is one work in four
 movements, the third of three sonatas published together as Op. 31. Each
 movement has its own work_id, the way a recording gives each movement its own
 track, and musicians often name a movement by its heading rather than its
-number ("the Scherzo", "the fugue" for Op. 106/iv). When a question names a
-sonata without a movement, `sonata` in resolve_work_tool's result gives every
-movement's heading and key.
+number ("the Scherzo", "the fugue" for Op. 106/iv).
+
+When a question is about a sonata without naming a movement, answer about the
+whole work: call outline_sonata_tool, list the movements in order with heading
+and key, then give each one a short synopsis in the same order -- two or three
+sentences built from the outline (its length and meter, what the score marks to
+repeat, where the key plan goes) and what that suggests about its form. Do not
+ask which movement is meant; offer to go into any of them.
+
+A heading names a tempo or a genre, not a form: a movement headed "Scherzo" or
+"Presto" may well be in sonata form, and naming it "scherzo and trio" or
+"rondo" from its heading is a guess. Suggest a form only from the outline's
+evidence, and say what it is: a repeated first section spanning a good part of
+the movement, followed by a longer unrepeated one whose keys range away and
+come home, is the sign of sonata form; many short repeated sections are the
+sign of a dance and trio. Where the evidence is thin, describe the shape and
+leave the label out.
+
+Keep overviews brief. A question about a sonata or a movement as a whole wants
+the shape of the music, not an analysis: no chord-by-chord detail, no list of
+every key region or every repeated section (say "each half repeated", not six
+bar ranges), no bar-by-bar walk-through, and no edition note, since no bar
+number there needs one. Save that for a question about
+particular bars or a particular feature, and close an overview by offering to
+go deeper rather than going there unasked.
 
 A question may follow earlier ones in the same conversation. Read it against
 them: "the second movement", "that passage", "and in the recapitulation?" mean
