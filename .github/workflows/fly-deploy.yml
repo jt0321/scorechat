@@ -35,12 +35,12 @@ jobs:
     env:
       DATABASE_URL: postgresql://scorechat:scorechat@localhost:5432/scorechat
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           # The .krn sources: parsing and numbering tests run against them.
           submodules: true
-      - uses: astral-sh/setup-uv@v6
-      - uses: actions/setup-python@v5
+      - uses: astral-sh/setup-uv@v10.3.3
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"   # the runtime image's version
       - run: psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -q -f db/schema.sql
@@ -54,7 +54,7 @@ jobs:
     runs-on: ubuntu-latest
     concurrency: deploy-group    # one deploy at a time; a newer push waits its turn
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - uses: superfly/flyctl-actions/setup-flyctl@master
       # --ha=false: a demo wants one machine, not the default pair.
       - run: flyctl deploy --remote-only --ha=false
