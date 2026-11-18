@@ -9,15 +9,22 @@ _Session = None
 
 
 def normalise_url(url: str) -> str:
-    """Accept the `postgres://` URL hosted providers hand out.
+    """Name the driver, and accept the `postgres://` URL hosted providers hand out.
 
     Neon, Supabase, Heroku and fly all print connection strings with the
     `postgres://` scheme, but SQLAlchemy 2 dropped that alias and fails with
     `Can't load plugin: sqlalchemy.dialects:postgres` — which reads like a
     missing driver rather than a one-word difference in a secret.
+
+    A bare `postgresql://` is not safe either: SQLAlchemy 2.1 changed its
+    default driver from psycopg2 to psycopg 3, so an unpinned URL fails with
+    `No module named 'psycopg'` on a fresh install. We depend on psycopg2, so
+    say so. A URL that already names a driver (`postgresql+psycopg://`) is left
+    alone.
     """
-    if url.startswith("postgres://"):
-        return "postgresql://" + url[len("postgres://"):]
+    for scheme in ("postgres://", "postgresql://"):
+        if url.startswith(scheme):
+            return "postgresql+psycopg2://" + url[len(scheme):]
     return url
 
 
