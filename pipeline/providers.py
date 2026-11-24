@@ -172,7 +172,11 @@ def get_chat_model(model: str | None = None, temperature: float = 0.3,
                 "CHAT_PROVIDER=gemini requires langchain-google-genai. "
                 "Install with: uv pip install langchain-google-genai"
             ) from e
-        return ChatGoogleGenerativeAI(model=model, temperature=temperature, google_api_key=os.environ["GEMINI_API_KEY"])
+        # Bounded: with no timeout, a Google call that hangs holds a server
+        # thread (and the visitor) indefinitely instead of failing.
+        return ChatGoogleGenerativeAI(model=model, temperature=temperature,
+                                      google_api_key=os.environ["GEMINI_API_KEY"],
+                                      timeout=30, max_retries=1)
 
     # OpenAI-compatible endpoints: same client, different base URL. This is
     # what makes the free tiers cost nothing to support.
