@@ -54,7 +54,7 @@ CHAT_PROVIDERS = {
     },
     "gemini": {
         "label": "Google Gemini",
-        "default_model": "gemini-2.5-flash",
+        "default_model": "gemini-4-hydrogen",
         "requires": ["GEMINI_API_KEY"],
         "free_tier": True,
     },
